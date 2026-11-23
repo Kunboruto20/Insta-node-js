@@ -23,7 +23,8 @@ export function loadSharp(): Sharp {
   } catch (e: any) {
     throw Boom.failedDependency(
       `Image processing requires the "sharp" package, which could not be loaded on ${process.platform}-${process.arch}. ` +
-        'Everything else in insta-node-js works without it. See https://sharp.pixelplumbing.com/install',
+        'Everything else in insta-node-js works without it. To enable image processing on this platform, ' +
+        'install the WebAssembly build: npm install @img/sharp-wasm32 (see https://sharp.pixelplumbing.com/install)',
       { code: 'DEPENDENCY_MISSING', dependency: 'sharp', cause: String(e?.message ?? e).split('\n')[0] },
     );
   }

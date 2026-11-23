@@ -90,6 +90,20 @@ npm install github:Kunboruto20/Insta-node-js
 
 `sharp` is loaded only when an image has to be processed. On platforms without a prebuilt `sharp` binary (for example Android / Termux) the library works normally, and only image processing (photo uploads, thumbnails, `StoryBuilder`) throws a Boom `424` error.
 
+On Android / Termux, install the WebAssembly build of `sharp` to enable image processing:
+
+```bash
+npm install @img/sharp-wasm32
+```
+
+Video processing on Termux uses the system ffmpeg:
+
+```bash
+pkg install ffmpeg
+```
+
+With the WebAssembly build, `StoryBuilder` works without a caption; captions need a native `sharp` binary.
+
 ## Quick start
 
 ```ts
