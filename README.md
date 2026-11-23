@@ -51,7 +51,6 @@ A complete **Instagram Private API** client for **Node.js**, written in **TypeSc
 - [Error handling (Boom)](#error-handling-boom)
 - [Logging](#logging)
 - [Models](#models)
-- [Building and publishing](#building-and-publishing)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 
@@ -59,7 +58,7 @@ A complete **Instagram Private API** client for **Node.js**, written in **TypeSc
 
 ## Requirements
 
-- **Node.js 18.17 or newer**
+- **Node.js 20.9 or newer**
 - Optional: **ffmpeg** and **ffprobe** for video processing (video, Reels, IGTV and video story uploads, `StoryBuilder`). They are installed automatically through the optional packages `ffmpeg-static` and `ffprobe-static`. A system binary also works (found on `PATH`, or set `FFMPEG_PATH` / `FFPROBE_PATH`).
 
 ## Installation
@@ -72,35 +71,24 @@ npm install insta-node-js
 
 The npm package name is lowercase (`insta-node-js`), as npm requires; the GitHub repository is `Kunboruto20/Insta-node-js`.
 
-Latest version from GitHub (compiled automatically during install):
+Latest version from GitHub:
 
 ```bash
 npm install github:Kunboruto20/Insta-node-js
 ```
-
-From source:
-
-```bash
-git clone https://github.com/Kunboruto20/Insta-node-js.git
-```
-
-```bash
-cd Insta-node-js && npm install
-```
-
-`npm install` also compiles the TypeScript sources into `dist/`.
 
 ## Dependencies
 
 | Package | Purpose |
 | --- | --- |
 | [`undici`](https://www.npmjs.com/package/undici) | HTTP client (HTTP/1.1 and HTTP/2, keep-alive, HTTP/HTTPS proxies) |
-| [`fetch-socks`](https://www.npmjs.com/package/fetch-socks) | SOCKS4 / SOCKS5 proxies for HTTP requests |
-| [`socks`](https://www.npmjs.com/package/socks) | SOCKS proxies for the realtime / FBNS MQTT connections |
+| [`socks`](https://www.npmjs.com/package/socks) | SOCKS4 / SOCKS5 proxies (HTTP requests and realtime / FBNS MQTT connections) |
 | [`sharp`](https://www.npmjs.com/package/sharp) | Image processing (resize, crop, JPEG conversion, thumbnails) |
 | [`@hapi/boom`](https://www.npmjs.com/package/@hapi/boom) | Errors with HTTP status codes |
 | `ffmpeg-static` *(optional)* | ffmpeg binary for video processing |
 | `ffprobe-static` *(optional)* | ffprobe binary for video metadata |
+
+`sharp` is loaded only when an image has to be processed. On platforms without a prebuilt `sharp` binary (for example Android / Termux) the library works normally, and only image processing (photo uploads, thumbnails, `StoryBuilder`) throws a Boom `424` error.
 
 ## Quick start
 
@@ -851,49 +839,6 @@ const loc = makeLocation({ name: 'Eiffel Tower', lat: 48.8584, lng: 2.2945 });
 ```
 
 Validation failures throw `ModelValidationError` (Boom 422, details in `err.data.errors`).
-
-## Building and publishing
-
-The TypeScript sources live in `src/`. The compiled package lives in `dist/`, which is generated and not committed to git.
-
-| Command | What it does |
-| --- | --- |
-| `npm install` | installs dependencies and compiles `src/` into `dist/` (`prepare` script) |
-| `npm run build` | compiles `src/` into `dist/` |
-| `npm run clean` | deletes `dist/` |
-| `npm run typecheck` | type-checks without writing files |
-| `npm test` | runs the test suite |
-
-For every file in `src/`, the build writes four files to `dist/`:
-
-| File | Content |
-| --- | --- |
-| `*.js` | the compiled JavaScript |
-| `*.d.ts` | the TypeScript type declarations |
-| `*.js.map` | the source map, with the TypeScript source embedded |
-| `*.d.ts.map` | the declaration map (go-to-definition in editors) |
-
-Publishing to npm:
-
-```bash
-npm login
-```
-
-```bash
-npm publish
-```
-
-`npm publish` first runs `prepublishOnly`: the tests, a clean build and the type check. The package contains only `dist/`, `README.md`, `LICENSE` and `package.json`; the TypeScript sources stay on GitHub. To see exactly what would be uploaded without publishing:
-
-```bash
-npm publish --dry-run
-```
-
-Before each new release, bump the version:
-
-```bash
-npm version patch
-```
 
 ## Disclaimer
 

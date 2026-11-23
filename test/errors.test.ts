@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Boom from '@hapi/boom';
 import * as ig from '../src';
+import { isSharpAvailable } from '../src/media/sharpLoader';
 
 test('library error classes are Boom errors and keep instanceof', () => {
   const e = new ig.LoginRequired('login required');
@@ -47,11 +48,29 @@ test('errors from Node.js and dependencies are converted to Boom', async () => {
   const path = await import('node:path');
   const cl = new ig.Client();
   await assert.rejects(cl.photoUpload('/definitely/missing.jpg', 'x'), (e: any) => Boom.isBoom(e, 404));
+  const rt = new ig.Client({ proxy: 'http://127.0.0.1:9' });
+  await assert.rejects(rt.fbnsConnect(), (e: any) => Boom.isBoom(e, 503) && e.name === 'ConnectionError');
+});
+
+test('unreadable images are Boom 415', { skip: !isSharpAvailable() && 'sharp is not available on this platform' }, async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const cl = new ig.Client();
   const bad = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ig-')), 'bad.jpg');
   fs.writeFileSync(bad, 'not an image');
   await assert.rejects(cl.photoUpload(bad, 'x'), (e: any) => Boom.isBoom(e, 415));
-  const rt = new ig.Client({ proxy: 'http://127.0.0.1:9' });
-  await assert.rejects(rt.fbnsConnect(), (e: any) => Boom.isBoom(e, 503) && e.name === 'ConnectionError');
+});
+
+test('image processing without sharp gives Boom 424, the rest of the library works', { skip: isSharpAvailable() && 'sharp is available' }, async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const cl = new ig.Client();
+  const img = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ig-')), 'photo.jpg');
+  fs.writeFileSync(img, 'x');
+  await assert.rejects(cl.photoUpload(img, 'x'), (e: any) => Boom.isBoom(e, 424) && /sharp/.test(e.message));
+  assert.equal(cl.mediaCodeFromPk(cl.mediaPkFromCode('B1LbfVPlwIA')), 'B1LbfVPlwIA');
 });
 
 test('async generators keep working and surface Boom errors', async () => {

@@ -1,5 +1,5 @@
 import { promises as fsp } from 'node:fs';
-import sharp from 'sharp';
+import { loadSharp } from '../media/sharpLoader';
 import * as config from '../core/defaults';
 import { ClientError, IGTVConfigureError, IGTVNotUpload } from '../core/errorClasses';
 import { Location, Media, Usertag } from '../models/schemas';
@@ -17,7 +17,7 @@ export async function analyzeIgtvVideo(filePath: string, thumbnail: string | nul
 /** Crop the center of the thumbnail to a 1:1.78 portrait */
 export async function cropThumbnail(filePath: string): Promise<boolean> {
   const input = await fsp.readFile(filePath);
-  const meta = await sharp(input).metadata();
+  const meta = await loadSharp()(input).metadata();
   const width = meta.width!;
   const height = meta.height!;
   const offset = height / 1.78 / 2;
@@ -25,10 +25,10 @@ export async function cropThumbnail(filePath: string): Promise<boolean> {
   // Crop the center of the image
   const left = Math.round(center - offset);
   const right = Math.round(center + offset);
-  const ext = await sharp(input)
+  const ext = await loadSharp()(input)
     .extend({ left: Math.max(0, -left), right: Math.max(0, right - width), background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .toBuffer();
-  const cropped = await sharp(ext)
+  const cropped = await loadSharp()(ext)
     .extract({ left: Math.max(0, left), top: 0, width: right - left, height })
     .toFormat(meta.format === 'png' ? 'png' : 'jpeg')
     .toBuffer();

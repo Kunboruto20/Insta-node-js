@@ -1,6 +1,6 @@
 import * as Boom from '@hapi/boom';
 import { promises as fsp } from 'node:fs';
-import sharp from 'sharp';
+import { loadSharp } from '../media/sharpLoader';
 import {
   ClientError,
   ClientForbiddenError,
@@ -64,7 +64,7 @@ export class MediaFeature {
   async _mediaShareStoryBackground(this: Client): Promise<string> {
     const p = makeTmpPath('.jpg', 'insta_story_share_');
     try {
-      await sharp({ create: { width: 720, height: 1280, channels: 3, background: { r: 0, g: 0, b: 0 } } }).jpeg({ quality: 95 }).toFile(p);
+      await loadSharp()({ create: { width: 720, height: 1280, channels: 3, background: { r: 0, g: 0, b: 0 } } }).jpeg({ quality: 95 }).toFile(p);
     } catch (e) {
       await fsp.unlink(p).catch(() => undefined);
       throw e;

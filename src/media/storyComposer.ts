@@ -1,7 +1,7 @@
 import * as Boom from '@hapi/boom';
 import { guardMethods } from '../core/boomErrors';
 import { existsSync } from 'node:fs';
-import sharp from 'sharp';
+import { loadSharp } from './sharpLoader';
 import { StoryBuild, StoryMention, StorySticker, makeStoryBuild, makeStorySticker } from '../models/schemas';
 import { FfmpegUnavailableError, ffmpeg, makeTmpPath, probe } from './ffmpegRunner';
 import { FFMPEG_HINT_MESSAGE } from './mp4Metadata';
@@ -31,17 +31,17 @@ async function renderText(
   bgColor: string | null = null,
 ): Promise<{ path: string; size: [number, number] }> {
   const markup = `<span foreground="${xmlEscape(color)}"${bgColor ? ` background="${xmlEscape(bgColor)}"` : ''}>${xmlEscape(text)}</span>`;
-  const png = await sharp({ text: { text: markup, font: `${font} ${fontSize}`, dpi: 72, rgba: true } }).png().toBuffer();
-  const meta = await sharp(png).metadata();
+  const png = await loadSharp()({ text: { text: markup, font: `${font} ${fontSize}`, dpi: 72, rgba: true } }).png().toBuffer();
+  const meta = await loadSharp()(png).metadata();
   const file = makeTmpPath('.png', 'text_');
-  await sharp(png).toFile(file);
+  await loadSharp()(png).toFile(file);
   return { path: file, size: [meta.width!, meta.height!] };
 }
 
 async function resizePng(file: string, width: number): Promise<{ path: string; size: [number, number] }> {
   const out = makeTmpPath('.png', 'text_');
-  await sharp(file).resize({ width }).png().toFile(out);
-  const meta = await sharp(out).metadata();
+  await loadSharp()(file).resize({ width }).png().toFile(out);
+  const meta = await loadSharp()(out).metadata();
   return { path: out, size: [meta.width!, meta.height!] };
 }
 
@@ -218,13 +218,13 @@ export class StoryBuilder {
 
   /** Build composite video from source photo */
   async photo(maxDuration = 0, font = 'Arial', fontsize = 100, color = 'white', link = ''): Promise<StoryBuild> {
-    const meta = await sharp(this.path).metadata();
+    const meta = await loadSharp()(this.path).metadata();
     const imageWidth = meta.width!;
     const imageHeight = meta.height!;
     const widthReductionPercent = this.width / imageWidth;
     const heightInRatio = Math.trunc(imageHeight * widthReductionPercent);
     const resized = makeTmpPath('.png', 'photo_');
-    await sharp(this.path).resize(this.width, heightInRatio, { fit: 'fill' }).png().toFile(resized);
+    await loadSharp()(this.path).resize(this.width, heightInRatio, { fit: 'fill' }).png().toFile(resized);
     const clip: StoryClip = { kind: 'image', path: resized, size: [this.width, heightInRatio], duration: null };
     return this.buildMain(clip, maxDuration || 15, font, fontsize, color, link);
   }

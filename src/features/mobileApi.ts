@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import * as Boom from '@hapi/boom';
 import { createInterface } from 'node:readline/promises';
 import * as config from '../core/defaults';
@@ -564,7 +565,10 @@ export class PrivateRequestFeature {
 
   /** A local path is returned as is; an http(s) URL is downloaded through the client's proxy. */
   async _loadMediaSource(this: Client, source: string): Promise<string | Buffer> {
-    if (!/^https?:\/\//i.test(source)) return source;
+    if (!/^https?:\/\//i.test(source)) {
+      if (!existsSync(source)) throw Boom.notFound(`File not found: ${source}`, { code: 'ENOENT', path: source });
+      return source;
+    }
     const response = await this._downloadGet(source);
     response.raise_for_status();
     return response.content;

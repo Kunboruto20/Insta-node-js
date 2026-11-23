@@ -2,7 +2,6 @@ import * as Boom from '@hapi/boom';
 import { randomUUID } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
-import sharp from 'sharp';
 import * as config from '../core/defaults';
 import { ClientError, ClipConfigureError, ClipNotUpload } from '../core/errorClasses';
 import { Location, Media, Track, Usertag } from '../models/schemas';
