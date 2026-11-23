@@ -1,5 +1,14 @@
 # insta-node-js
 
+> ### 💬 Support & community
+>
+> **[👉 Join the Telegram channel](https://t.me/+V6aZiZ01u3YxM2U0)**
+>
+> This is the Telegram channel where I offer support for clients — come join it.
+> There is also support for another WhatsApp client called **whalibmob** (a WhatsApp client for SMS registration and more).
+> Right now I offer support for **insta-node-js** and **whalibmob**.
+
+
 A complete **Instagram Private API** client for **Node.js**, written in **TypeScript**.
 
 - Full mobile API coverage: login (2FA / TOTP, challenges, session reuse), users, followers, media, comments, likes, uploads (photo, video, album, Reels, IGTV, stories), downloads, stories, highlights, collections, hashtags, locations, Direct, notes, insights, notifications, search, music, Facebook/Threads cross-posting, signup and multiple accounts.
