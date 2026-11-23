@@ -5,8 +5,8 @@
 > **[👉 Join the Telegram channel](https://t.me/+V6aZiZ01u3YxM2U0)**
 >
 > This is the Telegram channel where I offer support for clients — come join it.
-> There is also support for another WhatsApp client called **whalibmob** (a WhatsApp client for SMS registration and more).
-> Right now I offer support for **insta-node-js** and **whalibmob**.
+> There is also another client by the same author, **[whalibmob](https://github.com/Kunboruto20/whalibmob)** — a WhatsApp client for SMS registration and more.
+> Right now I offer support for **[insta-node-js](https://github.com/Kunboruto20/Insta-node-js)** and **[whalibmob](https://github.com/Kunboruto20/whalibmob)**.
 
 
 A complete **Instagram Private API** client for **Node.js**, written in **TypeScript**.
