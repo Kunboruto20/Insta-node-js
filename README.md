@@ -9,9 +9,7 @@
 > Right now I offer support for **[insta-node-js](https://github.com/Kunboruto20/Insta-node-js)** and **[whalibmob](https://github.com/Kunboruto20/whalibmob)**.
 
 
-**Library for the Instagram API with MQTT support and much more — featured 2026.**
-
-A standalone implementation of the Instagram Private API for **Node.js**, written in **TypeScript**. It is self-contained: its own HTTP layer, request signing and realtime MQTT stack, with no dependency on any other Instagram client library.
+**Powerful and best Node.js library for the Instagram mobile API.**
 
 - Full mobile API coverage: login (2FA / TOTP, challenges, session reuse), users, followers, media, comments, likes, uploads (photo, video, album, Reels, IGTV, stories), downloads, stories, highlights, collections, hashtags, locations, Direct, notes, insights, notifications, search, music, Facebook/Threads cross-posting, signup and multiple accounts.
 - **Realtime MQTT** (MQTToT): live Direct messages, typing, seen and presence events, and sending Direct actions over MQTT.
