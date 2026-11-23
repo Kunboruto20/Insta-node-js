@@ -4,9 +4,11 @@ import { PublicRequestMixin, TopSearchesPublicMixin, ProfilePublicMixin } from '
 import { ChallengeResolveMixin } from './mixins/challenge';
 import { PrivateRequestMixin } from './mixins/private';
 import { PrivateGraphQLRequestMixin } from './mixins/graphql';
+import { CrossPostingMixin } from './mixins/crossposting';
 import { LoginMixin, PreLoginFlowMixin, PostLoginFlowMixin } from './mixins/auth';
 import { ShareMixin } from './mixins/share';
 import { TrackMixin } from './mixins/track';
+import { FbSearchMixin } from './mixins/fbsearch';
 import { HighlightMixin } from './mixins/highlight';
 import { NotificationMixin } from './mixins/notification';
 import { MediaMixin } from './mixins/media';
@@ -42,6 +44,7 @@ export interface Client extends PublicRequestMixin,
   ChallengeResolveMixin,
   PrivateRequestMixin,
   PrivateGraphQLRequestMixin,
+  CrossPostingMixin,
   TopSearchesPublicMixin,
   ProfilePublicMixin,
   LoginMixin,
@@ -49,6 +52,7 @@ export interface Client extends PublicRequestMixin,
   PostLoginFlowMixin,
   ShareMixin,
   TrackMixin,
+  FbSearchMixin,
   HighlightMixin,
   NotificationMixin,
   MediaMixin,
@@ -84,6 +88,7 @@ export const MIXINS = [
   ChallengeResolveMixin,
   PrivateRequestMixin,
   PrivateGraphQLRequestMixin,
+  CrossPostingMixin,
   TopSearchesPublicMixin,
   ProfilePublicMixin,
   LoginMixin,
@@ -91,6 +96,7 @@ export const MIXINS = [
   PostLoginFlowMixin,
   ShareMixin,
   TrackMixin,
+  FbSearchMixin,
   HighlightMixin,
   NotificationMixin,
   MediaMixin,
