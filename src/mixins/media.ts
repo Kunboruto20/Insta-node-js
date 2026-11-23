@@ -532,7 +532,7 @@ export class MediaMixin {
       caption_text: caption,
       container_module: 'edit_media_info',
       feed_position: '0',
-      location: this.locationBuild(location),
+      location: await this.locationBuild(location),
       usertags: require('../utils/serialization').pyJsonDumps({ in: tags }),
       is_carousel_bumped_post: 'false',
     };

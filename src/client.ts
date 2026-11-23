@@ -6,9 +6,15 @@ import { PrivateRequestMixin } from './mixins/private';
 import { PrivateGraphQLRequestMixin } from './mixins/graphql';
 import { LoginMixin, PreLoginFlowMixin, PostLoginFlowMixin } from './mixins/auth';
 import { ShareMixin } from './mixins/share';
+import { HighlightMixin } from './mixins/highlight';
 import { MediaMixin } from './mixins/media';
 import { UserMixin } from './mixins/user';
+import { CollectionMixin } from './mixins/collection';
 import { AccountMixin } from './mixins/account';
+import { LocationMixin } from './mixins/location';
+import { HashtagMixin } from './mixins/hashtag';
+import { CommentMixin } from './mixins/comment';
+import { StoryMixin } from './mixins/story';
 import { PasswordMixin } from './mixins/password';
 import { SignUpMixin } from './mixins/signup';
 import { ReelsMixin } from './mixins/timeline';
@@ -38,9 +44,15 @@ export interface Client extends PublicRequestMixin,
   PreLoginFlowMixin,
   PostLoginFlowMixin,
   ShareMixin,
+  HighlightMixin,
   MediaMixin,
   UserMixin,
+  CollectionMixin,
   AccountMixin,
+  LocationMixin,
+  HashtagMixin,
+  CommentMixin,
+  StoryMixin,
   PasswordMixin,
   SignUpMixin,
   ReelsMixin,
@@ -70,9 +82,15 @@ export const MIXINS = [
   PreLoginFlowMixin,
   PostLoginFlowMixin,
   ShareMixin,
+  HighlightMixin,
   MediaMixin,
   UserMixin,
+  CollectionMixin,
   AccountMixin,
+  LocationMixin,
+  HashtagMixin,
+  CommentMixin,
+  StoryMixin,
   PasswordMixin,
   SignUpMixin,
   ReelsMixin,
