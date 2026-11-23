@@ -149,6 +149,8 @@ const { Client } = require('insta-node-js');
 - Methods with many optional arguments take an options object as the last parameter (for example `photoUpload(path, caption, { usertags, location })`).
 - Errors are Boom errors (see [Error handling](#error-handling-boom)).
 
+The library is written in TypeScript and ships full type definitions. This README covers the common tasks with examples, but the client has hundreds of methods; they are all nicely typed, so the full set of methods and their options shows up in your editor's autocomplete (IntelliSense in VS Code and similar). If you need a method that is not in this README, start typing `client.` and your editor will list what is available, with typed parameters and return values.
+
 ## Client options
 
 ```ts
