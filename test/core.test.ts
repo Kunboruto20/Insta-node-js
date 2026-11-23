@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as ig from '../src';
 
-test('client exposes the full instagrapi surface', () => {
+test('client exposes the full API surface', () => {
   const cl = new ig.Client();
   for (const name of [
     'login', 'relogin', 'loginBySessionid', 'getSettings', 'setSettings', 'dumpSettings', 'loadSettings',
@@ -37,7 +37,7 @@ test('settings roundtrip via dump/load', async () => {
   assert.equal(cl2.userAgent, cl.userAgent);
 });
 
-test('exception hierarchy mirrors instagrapi', () => {
+test('exception hierarchy', () => {
   const e = new ig.LoginRequired('login required');
   assert.ok(e instanceof ig.ClientError);
   assert.ok(e instanceof Error);
@@ -46,12 +46,12 @@ test('exception hierarchy mirrors instagrapi', () => {
 });
 
 test('bigint-safe json parsing keeps ids exact', () => {
-  const data = ig.json.parseJson('{"pk": 3141592653589793238, "n": 1}');
+  const data = ig.bigJson.parseJson('{"pk": 3141592653589793238, "n": 1}');
   assert.equal(String(data.pk), '3141592653589793238');
   assert.equal(data.n, 1);
 });
 
-test('DirectThread.isSeen mirrors python', () => {
+test('DirectThread.isSeen', () => {
   const t = ig.makeDirectThread({
     pk: '1', id: '1', messages: [], users: [], inviter: null, left_users: [], admin_user_ids: [],
     last_activity_at: 1700000000, muted: false, named: false, canonical: true, pending: false,
@@ -68,4 +68,24 @@ test('DirectThread.isSeen mirrors python', () => {
   assert.equal(t.isSeen(20), false);
   assert.equal(t.isSeen('99'), false);
   assert.ok(!('isSeen' in JSON.parse(JSON.stringify(t))));
+});
+
+test('media downloads send the Instagram app User-Agent', async () => {
+  const http = await import('node:http');
+  let seen: string | undefined;
+  const server = http.createServer((req, res) => {
+    seen = req.headers['user-agent'];
+    res.end('data');
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const port = (server.address() as any).port;
+  try {
+    const cl = new ig.Client();
+    const bytes = await cl.photoDownloadByUrlOrigin(`http://127.0.0.1:${port}/photo.jpg`);
+    assert.equal(bytes.toString(), 'data');
+    assert.equal(seen, cl.userAgent);
+    assert.match(seen!, /^Instagram \d+\.\d+\.\d+\.\d+\.\d+ Android/);
+  } finally {
+    server.close();
+  }
 });

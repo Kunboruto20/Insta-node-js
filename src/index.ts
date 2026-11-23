@@ -2,33 +2,43 @@
  * insta-node-js — Instagram Private API client for Node.js (TypeScript)
  * with realtime MQTT (MQTToT) and FBNS push support.
  */
-import { Client } from './client';
+import { Client } from './core/instaClient';
 
-export { Client, MIXINS } from './client';
-export { ClientBase, ClientOptions } from './base';
-export * from './exceptions';
-export * from './types';
-export { ModelValidationError } from './models/validator';
-export * as config from './config';
-export * as extractors from './extractors';
-export * as zones from './zones';
-export * as secondary from './secondary';
-export { StoryBuilder } from './story';
-export * as imageUtil from './imageUtil';
-export * as realtime from './realtime';
-export { RealtimeClient, FbnsClient, FbnsDeviceAuth } from './realtime';
-export * as http from './http/session';
-export { Session } from './http/session';
+export { Client, FEATURES } from './core/instaClient';
+export { ClientBase, ClientOptions } from './core/clientCore';
+export type { ChallengeCodeHandler, ChangePasswordHandler, HandleException } from './core/clientCore';
+export { ChallengeChoice } from './features/securityChallenge';
+export { NoteAudience } from './features/notes';
+export type { CaptchaHandler } from './features/captchaSolver';
+export type { PhotoUploadOptions, StoryUploadOptions } from './features/photos';
+export type { VideoUploadOptions } from './features/videos';
+export type { AlbumUploadOptions } from './features/carousel';
+export type { ClipUploadOptions } from './features/reels';
+export type { CrosspostingOptions } from './features/crossPost';
+export * from './core/errorClasses';
+export { Boom, boomifyError, refreshBoom, isInvalidInput } from './core/boomErrors';
+export * from './models/schemas';
+export { ModelValidationError } from './models/validate';
+export * as defaults from './core/defaults';
+export * as parsers from './parsing/responseParsers';
+export * as timezones from './helpers/timezones';
+export * as accountsCenter from './features/accountsCenterFlow';
+export { StoryBuilder } from './media/storyComposer';
+export * as imageTools from './media/imageTools';
+export * as mqtt from './mqtt';
+export { RealtimeClient, FbnsClient, FbnsDeviceAuth } from './mqtt';
+export * as net from './net/httpClient';
+export { Session } from './net/httpClient';
 
 // utilities
-export * as utils from './utils/auth';
-export * as ids from './utils/ids';
-export * as serialization from './utils/serialization';
-export * as json from './utils/json';
-export * as iterators from './utils/iterators';
-export * as logging from './utils/logging';
-export * as timing from './utils/timing';
-export * as validation from './utils/validation';
+export * as signing from './helpers/signing';
+export * as shortcode from './helpers/shortcode';
+export * as encoding from './helpers/encoding';
+export * as bigJson from './helpers/bigJson';
+export * as pagination from './helpers/pagination';
+export * as logger from './helpers/logger';
+export * as delays from './helpers/delays';
+export * as assertions from './helpers/assertions';
 
 export const VERSION: string = (() => {
   try {
