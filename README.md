@@ -80,12 +80,6 @@ npm install insta-node-js
 
 The npm package name is lowercase (`insta-node-js`), as npm requires; the GitHub repository is `Kunboruto20/Insta-node-js`.
 
-Latest version from GitHub:
-
-```bash
-npm install github:Kunboruto20/Insta-node-js
-```
-
 ## Dependencies
 
 | Package | Purpose |
