@@ -58,7 +58,7 @@ A complete **Instagram Private API** client for **Node.js**, written in **TypeSc
 
 ## Requirements
 
-- **Node.js 18.17 or newer**
+- **Node.js 20.9 or newer**
 - Optional: **ffmpeg** and **ffprobe** for video processing (video, Reels, IGTV and video story uploads, `StoryBuilder`). They are installed automatically through the optional packages `ffmpeg-static` and `ffprobe-static`. A system binary also works (found on `PATH`, or set `FFMPEG_PATH` / `FFPROBE_PATH`).
 
 ## Installation
@@ -82,12 +82,13 @@ npm install github:Kunboruto20/Insta-node-js
 | Package | Purpose |
 | --- | --- |
 | [`undici`](https://www.npmjs.com/package/undici) | HTTP client (HTTP/1.1 and HTTP/2, keep-alive, HTTP/HTTPS proxies) |
-| [`fetch-socks`](https://www.npmjs.com/package/fetch-socks) | SOCKS4 / SOCKS5 proxies for HTTP requests |
-| [`socks`](https://www.npmjs.com/package/socks) | SOCKS proxies for the realtime / FBNS MQTT connections |
+| [`socks`](https://www.npmjs.com/package/socks) | SOCKS4 / SOCKS5 proxies (HTTP requests and realtime / FBNS MQTT connections) |
 | [`sharp`](https://www.npmjs.com/package/sharp) | Image processing (resize, crop, JPEG conversion, thumbnails) |
 | [`@hapi/boom`](https://www.npmjs.com/package/@hapi/boom) | Errors with HTTP status codes |
 | `ffmpeg-static` *(optional)* | ffmpeg binary for video processing |
 | `ffprobe-static` *(optional)* | ffprobe binary for video metadata |
+
+`sharp` is loaded only when an image has to be processed. On platforms without a prebuilt `sharp` binary (for example Android / Termux) the library works normally, and only image processing (photo uploads, thumbnails, `StoryBuilder`) throws a Boom `424` error.
 
 ## Quick start
 

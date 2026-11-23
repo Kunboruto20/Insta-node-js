@@ -2,7 +2,7 @@
 // This software is released under the MIT License. https://opensource.org/licenses/MIT
 import * as Boom from '@hapi/boom';
 import { copyFileSync, promises as fsp, statSync } from 'node:fs';
-import sharp from 'sharp';
+import { loadSharp } from './sharpLoader';
 import { get as httpGet } from '../net/httpClient';
 import { ffmpeg, makeTmpPath, probe } from './ffmpegRunner';
 import { FFMPEG_HINT_MESSAGE } from './mp4Metadata';
@@ -91,29 +91,29 @@ export async function prepareImage(
   opts: { minSize?: Size } = {},
 ): Promise<[Buffer, Size]> {
   const minSize = opts.minSize ?? [320, 167];
-  let im = sharp(await loadInput(img)).rotate();
-  let meta = await sharp(await im.toBuffer()).metadata();
+  let im = loadSharp()(await loadInput(img)).rotate();
+  let meta = await loadSharp()(await im.toBuffer()).metadata();
   let size: Size = [meta.width!, meta.height!];
   let buf = await im.toBuffer();
   if (aspectRatios) {
     const cropBox = calcCrop(aspectRatios, size);
     if (cropBox) {
       const [l, t, r, b] = cropBox;
-      buf = await sharp(buf).extract({ left: l, top: t, width: r - l, height: b - t }).toBuffer();
+      buf = await loadSharp()(buf).extract({ left: l, top: t, width: r - l, height: b - t }).toBuffer();
       size = [r - l, b - t];
     }
   }
   const newSize = calcResize(maxSize, size, minSize);
   if (newSize) {
-    buf = await sharp(buf).resize(newSize[0], newSize[1], { fit: 'fill' }).toBuffer();
+    buf = await loadSharp()(buf).resize(newSize[0], newSize[1], { fit: 'fill' }).toBuffer();
     size = newSize;
   }
   // Removes transparency (alpha)
-  im = sharp(buf).flatten({ background: { r: 255, g: 255, b: 255 } });
+  im = loadSharp()(buf).flatten({ background: { r: 255, g: 255, b: 255 } });
   buf = await im.toBuffer();
-  if (savePath) await sharp(buf).toFile(savePath);
-  const jpeg = await sharp(buf).jpeg({ quality: 75 }).toBuffer();
-  meta = await sharp(jpeg).metadata();
+  if (savePath) await loadSharp()(buf).toFile(savePath);
+  const jpeg = await loadSharp()(buf).jpeg({ quality: 75 }).toBuffer();
+  meta = await loadSharp()(jpeg).metadata();
   return [jpeg, [meta.width!, meta.height!]];
 }
 
@@ -124,16 +124,16 @@ export async function prepareStoryImageFit(
   backgroundColor: string | [number, number, number] = 'black',
   savePath: string | null = null,
 ): Promise<[Buffer, Size]> {
-  const source = sharp(await loadInput(img)).rotate().ensureAlpha();
+  const source = loadSharp()(await loadInput(img)).rotate().ensureAlpha();
   const fitted = await source.resize(maxSize[0], maxSize[1], { fit: 'inside', withoutEnlargement: true, kernel: 'lanczos3' }).png().toBuffer();
-  const meta = await sharp(fitted).metadata();
+  const meta = await loadSharp()(fitted).metadata();
   const left = Math.trunc((maxSize[0] - meta.width!) / 2);
   const top = Math.trunc((maxSize[1] - meta.height!) / 2);
   const background = Array.isArray(backgroundColor) ? { r: backgroundColor[0], g: backgroundColor[1], b: backgroundColor[2] } : backgroundColor;
-  const canvas = sharp({ create: { width: maxSize[0], height: maxSize[1], channels: 3, background } }).composite([{ input: fitted, left, top }]);
+  const canvas = loadSharp()({ create: { width: maxSize[0], height: maxSize[1], channels: 3, background } }).composite([{ input: fitted, left, top }]);
   const rgb = await canvas.png().toBuffer();
-  if (savePath) await sharp(rgb).toFile(savePath);
-  return [await sharp(rgb).jpeg({ quality: 75 }).toBuffer(), [maxSize[0], maxSize[1]]];
+  if (savePath) await loadSharp()(rgb).toFile(savePath);
+  return [await loadSharp()(rgb).jpeg({ quality: 75 }).toBuffer(), [maxSize[0], maxSize[1]]];
 }
 
 export interface PrepareVideoOptions {

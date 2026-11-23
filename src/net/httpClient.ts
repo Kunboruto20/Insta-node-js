@@ -11,7 +11,8 @@ import { boomifyError } from '../core/boomErrors';
 import { readFileSync, statSync } from 'node:fs';
 import { promisify } from 'node:util';
 import * as zlib from 'node:zlib';
-import { Agent, Dispatcher, ProxyAgent, request as undiciRequest } from 'undici';
+import { Agent, Dispatcher, ProxyAgent, buildConnector, request as undiciRequest } from 'undici';
+import { SocksClient, SocksProxy } from 'socks';
 import { parseJson } from '../helpers/bigJson';
 
 const gunzip = promisify(zlib.gunzip);
@@ -376,6 +377,33 @@ function qp(s: string): string {
 
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'transfer-encoding', 'upgrade', 'host']);
 
+/**
+ * Undici connector that opens the TCP connection through a SOCKS4/5 proxy, then lets undici
+ * perform the TLS handshake (ALPN, HTTP/2) on top of the tunnelled socket.
+ */
+function socksConnector(proxy: SocksProxy, tlsOptions: Record<string, any>): buildConnector.connector {
+  const tlsConnect = buildConnector(tlsOptions as buildConnector.BuildOptions);
+  const timeout = typeof tlsOptions.timeout === 'number' ? tlsOptions.timeout : 10_000;
+  return (options, callback) => {
+    const port = options.port ? Number.parseInt(options.port, 10) : options.protocol === 'http:' ? 80 : 443;
+    SocksClient.createConnection({
+      command: 'connect',
+      proxy,
+      timeout,
+      destination: { host: options.hostname, port },
+    }).then(
+      ({ socket }) => {
+        if (options.protocol !== 'https:') {
+          callback(null, socket.setNoDelay());
+          return;
+        }
+        tlsConnect({ ...options, httpSocket: socket } as any, callback);
+      },
+      (error: Error) => callback(error, null),
+    );
+  };
+}
+
 export class Session {
   headers = new CaseInsensitiveDict({
     'User-Agent': 'insta-node-js',
@@ -439,19 +467,20 @@ export class Session {
     if (proxyUrl) {
       const scheme = proxyUrl.split(':', 1)[0].toLowerCase();
       if (scheme.startsWith('socks')) {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { socksDispatcher } = require('fetch-socks');
         const u = new URL(proxyUrl);
-        d = socksDispatcher(
-          {
-            type: scheme.startsWith('socks4') ? 4 : 5,
-            host: u.hostname,
-            port: Number(u.port || 1080),
-            userId: u.username ? decodeURIComponent(u.username) : undefined,
-            password: u.password ? decodeURIComponent(u.password) : undefined,
-          },
-          { connect: tls, ...common },
-        ) as Dispatcher;
+        d = new Agent({
+          ...common,
+          connect: socksConnector(
+            {
+              type: scheme.startsWith('socks4') ? 4 : 5,
+              host: u.hostname.replace(/^\[|\]$/g, ''),
+              port: Number(u.port || 1080),
+              userId: u.username ? decodeURIComponent(u.username) : undefined,
+              password: u.password ? decodeURIComponent(u.password) : undefined,
+            },
+            { ...tls, allowH2 },
+          ),
+        });
       } else {
         d = new ProxyAgent({ uri: proxyUrl, requestTls: tls as any, proxyTls: this.verify === false ? { rejectUnauthorized: false } : undefined, ...common });
       }

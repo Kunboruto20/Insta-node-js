@@ -1,7 +1,7 @@
 import * as Boom from '@hapi/boom';
 import { existsSync, promises as fsp } from 'node:fs';
 import * as path from 'node:path';
-import sharp from 'sharp';
+import { loadSharp } from '../media/sharpLoader';
 import * as config from '../core/defaults';
 import { ClientError, PhotoConfigureError, PhotoConfigureStoryError, PhotoNotUpload } from '../core/errorClasses';
 import { prepareImage, prepareStoryImageFit } from '../media/imageTools';
@@ -183,7 +183,7 @@ export class UploadPhotoFeature {
     let height: number;
     if (forStory && resizeMode === 'fit') [width, height] = photoSize;
     else {
-      const meta = await sharp(filePath).metadata();
+      const meta = await loadSharp()(filePath).metadata();
       // PIL reports the stored (un-rotated) dimensions
       [width, height] = [meta.width!, meta.height!];
     }
