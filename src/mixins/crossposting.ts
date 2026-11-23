@@ -85,6 +85,10 @@ export class CrossPostingMixin {
     return result;
   }
 
+  _crosspostingIterDicts(this: Client, value: any): Generator<Record<string, any>> {
+    return iterDicts(value);
+  }
+
   _crosspostingCandidateValue(this: Client, cfg: Record<string, any>, keys: string[]): any {
     for (const key of keys) {
       const value = cfg[key];

@@ -20,6 +20,7 @@ import { UserMixin } from './mixins/user';
 import { InsightsMixin } from './mixins/insights';
 import { CollectionMixin } from './mixins/collection';
 import { AccountMixin } from './mixins/account';
+import { DirectMixin } from './mixins/direct';
 import { LocationMixin } from './mixins/location';
 import { HashtagMixin } from './mixins/hashtag';
 import { CommentMixin } from './mixins/comment';
@@ -36,6 +37,7 @@ import { MultipleAccountsMixin } from './mixins/multipleAccounts';
 import { NoteMixin } from './mixins/note';
 import { QuickSnapMixin } from './mixins/quicksnap';
 import { FundraiserMixin } from './mixins/fundraiser';
+import { RealtimeMixin } from './mixins/realtime';
 import { CaptchaHandlerMixin } from './mixins/captcha';
 
 /**
@@ -73,6 +75,7 @@ export interface Client extends PublicRequestMixin,
   InsightsMixin,
   CollectionMixin,
   AccountMixin,
+  DirectMixin,
   LocationMixin,
   HashtagMixin,
   CommentMixin,
@@ -91,6 +94,7 @@ export interface Client extends PublicRequestMixin,
   NoteMixin,
   QuickSnapMixin,
   FundraiserMixin,
+  RealtimeMixin,
   CaptchaHandlerMixin {}
 
 export class Client extends ClientBase {
@@ -128,6 +132,7 @@ export const MIXINS = [
   InsightsMixin,
   CollectionMixin,
   AccountMixin,
+  DirectMixin,
   LocationMixin,
   HashtagMixin,
   CommentMixin,
@@ -146,6 +151,7 @@ export const MIXINS = [
   NoteMixin,
   QuickSnapMixin,
   FundraiserMixin,
+  RealtimeMixin,
   CaptchaHandlerMixin,
 ];
 
