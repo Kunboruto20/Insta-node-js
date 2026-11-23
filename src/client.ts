@@ -12,7 +12,9 @@ import { FbSearchMixin } from './mixins/fbsearch';
 import { HighlightMixin } from './mixins/highlight';
 import { DownloadPhotoMixin, UploadPhotoMixin } from './mixins/photo';
 import { DownloadVideoMixin, UploadVideoMixin } from './mixins/video';
+import { DownloadAlbumMixin, UploadAlbumMixin } from './mixins/album';
 import { NotificationMixin } from './mixins/notification';
+import { DownloadIGTVMixin, UploadIGTVMixin } from './mixins/igtv';
 import { MediaMixin } from './mixins/media';
 import { UserMixin } from './mixins/user';
 import { InsightsMixin } from './mixins/insights';
@@ -24,6 +26,7 @@ import { CommentMixin } from './mixins/comment';
 import { StoryMixin } from './mixins/story';
 import { PasswordMixin } from './mixins/password';
 import { SignUpMixin } from './mixins/signup';
+import { ClipMixin, DownloadClipMixin, UploadClipMixin } from './mixins/clip';
 import { ReelsMixin } from './mixins/timeline';
 import { ExploreMixin } from './mixins/explore';
 import { DeviceAttestationMixin } from './mixins/attestation';
@@ -60,7 +63,11 @@ export interface Client extends PublicRequestMixin,
   UploadPhotoMixin,
   DownloadVideoMixin,
   UploadVideoMixin,
+  DownloadAlbumMixin,
   NotificationMixin,
+  UploadAlbumMixin,
+  DownloadIGTVMixin,
+  UploadIGTVMixin,
   MediaMixin,
   UserMixin,
   InsightsMixin,
@@ -72,6 +79,9 @@ export interface Client extends PublicRequestMixin,
   StoryMixin,
   PasswordMixin,
   SignUpMixin,
+  ClipMixin,
+  DownloadClipMixin,
+  UploadClipMixin,
   ReelsMixin,
   ExploreMixin,
   DeviceAttestationMixin,
@@ -108,7 +118,11 @@ export const MIXINS = [
   UploadPhotoMixin,
   DownloadVideoMixin,
   UploadVideoMixin,
+  DownloadAlbumMixin,
   NotificationMixin,
+  UploadAlbumMixin,
+  DownloadIGTVMixin,
+  UploadIGTVMixin,
   MediaMixin,
   UserMixin,
   InsightsMixin,
@@ -120,6 +134,9 @@ export const MIXINS = [
   StoryMixin,
   PasswordMixin,
   SignUpMixin,
+  ClipMixin,
+  DownloadClipMixin,
+  UploadClipMixin,
   ReelsMixin,
   ExploreMixin,
   DeviceAttestationMixin,

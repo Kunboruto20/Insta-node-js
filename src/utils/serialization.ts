@@ -25,6 +25,7 @@ export function pyFloat(n: number): PyFloat {
 export function pyFloatString(n: number): string {
   if (Number.isNaN(n)) return 'NaN';
   if (!Number.isFinite(n)) return n > 0 ? 'Infinity' : '-Infinity';
+  if (Object.is(n, -0)) return '-0.0';
   if (Number.isInteger(n) && Math.abs(n) < 1e16) return `${n}.0`;
   const s = String(n);
   return s.includes('e') ? s.replace(/e\+?(-?)(\d)$/, 'e$1' + '0$2').replace('e+', 'e+') : s;

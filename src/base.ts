@@ -177,6 +177,9 @@ export class ClientBase {
   // ---- CaptchaHandlerMixin
   _captchaHandlerInstance: ((details: Record<string, any>) => string | Promise<string>) | null = null;
 
+  /** IGTV composer session id (set by igtvUpload) */
+  igtvComposerSessionId = '';
+
   /** used by userRelatedProfilesGql retry signal */
   numRetry?: number;
 
