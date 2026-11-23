@@ -6,9 +6,12 @@ import { PrivateRequestMixin } from './mixins/private';
 import { PrivateGraphQLRequestMixin } from './mixins/graphql';
 import { LoginMixin, PreLoginFlowMixin, PostLoginFlowMixin } from './mixins/auth';
 import { ShareMixin } from './mixins/share';
+import { TrackMixin } from './mixins/track';
 import { HighlightMixin } from './mixins/highlight';
+import { NotificationMixin } from './mixins/notification';
 import { MediaMixin } from './mixins/media';
 import { UserMixin } from './mixins/user';
+import { InsightsMixin } from './mixins/insights';
 import { CollectionMixin } from './mixins/collection';
 import { AccountMixin } from './mixins/account';
 import { LocationMixin } from './mixins/location';
@@ -23,6 +26,7 @@ import { DeviceAttestationMixin } from './mixins/attestation';
 import { BloksMixin } from './mixins/bloks';
 import { TOTPMixin } from './mixins/totp';
 import { MultipleAccountsMixin } from './mixins/multipleAccounts';
+import { NoteMixin } from './mixins/note';
 import { QuickSnapMixin } from './mixins/quicksnap';
 import { FundraiserMixin } from './mixins/fundraiser';
 import { CaptchaHandlerMixin } from './mixins/captcha';
@@ -44,9 +48,12 @@ export interface Client extends PublicRequestMixin,
   PreLoginFlowMixin,
   PostLoginFlowMixin,
   ShareMixin,
+  TrackMixin,
   HighlightMixin,
+  NotificationMixin,
   MediaMixin,
   UserMixin,
+  InsightsMixin,
   CollectionMixin,
   AccountMixin,
   LocationMixin,
@@ -61,6 +68,7 @@ export interface Client extends PublicRequestMixin,
   BloksMixin,
   TOTPMixin,
   MultipleAccountsMixin,
+  NoteMixin,
   QuickSnapMixin,
   FundraiserMixin,
   CaptchaHandlerMixin {}
@@ -82,9 +90,12 @@ export const MIXINS = [
   PreLoginFlowMixin,
   PostLoginFlowMixin,
   ShareMixin,
+  TrackMixin,
   HighlightMixin,
+  NotificationMixin,
   MediaMixin,
   UserMixin,
+  InsightsMixin,
   CollectionMixin,
   AccountMixin,
   LocationMixin,
@@ -99,6 +110,7 @@ export const MIXINS = [
   BloksMixin,
   TOTPMixin,
   MultipleAccountsMixin,
+  NoteMixin,
   QuickSnapMixin,
   FundraiserMixin,
   CaptchaHandlerMixin,
