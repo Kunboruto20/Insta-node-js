@@ -6,6 +6,7 @@ import { PrivateRequestMixin } from './mixins/private';
 import { PrivateGraphQLRequestMixin } from './mixins/graphql';
 import { LoginMixin, PreLoginFlowMixin, PostLoginFlowMixin } from './mixins/auth';
 import { ShareMixin } from './mixins/share';
+import { UserMixin } from './mixins/user';
 import { AccountMixin } from './mixins/account';
 import { PasswordMixin } from './mixins/password';
 import { SignUpMixin } from './mixins/signup';
@@ -36,6 +37,7 @@ export interface Client extends PublicRequestMixin,
   PreLoginFlowMixin,
   PostLoginFlowMixin,
   ShareMixin,
+  UserMixin,
   AccountMixin,
   PasswordMixin,
   SignUpMixin,
@@ -66,6 +68,7 @@ export const MIXINS = [
   PreLoginFlowMixin,
   PostLoginFlowMixin,
   ShareMixin,
+  UserMixin,
   AccountMixin,
   PasswordMixin,
   SignUpMixin,
