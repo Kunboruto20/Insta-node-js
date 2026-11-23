@@ -6,7 +6,32 @@ function encodeValue(_key: string, value: any): any {
   return value;
 }
 
+/** A number that python would serialize as a float (e.g. 1080.0 instead of 1080) */
+export class PyFloat {
+  constructor(public readonly value: number) {}
+  toJSON(): number {
+    return this.value;
+  }
+  toString(): string {
+    return pyFloatString(this.value);
+  }
+}
+
+/** Mark a number as a python float for JSON serialization */
+export function pyFloat(n: number): PyFloat {
+  return new PyFloat(Number(n));
+}
+
+export function pyFloatString(n: number): string {
+  if (Number.isNaN(n)) return 'NaN';
+  if (!Number.isFinite(n)) return n > 0 ? 'Infinity' : '-Infinity';
+  if (Number.isInteger(n) && Math.abs(n) < 1e16) return `${n}.0`;
+  const s = String(n);
+  return s.includes('e') ? s.replace(/e\+?(-?)(\d)$/, 'e$1' + '0$2').replace('e+', 'e+') : s;
+}
+
 function prepare(value: any): any {
+  if (value instanceof PyFloat) return `__PYFLOAT__${pyFloatString(value.value)}__`;
   if (value instanceof Date) return Math.floor(value.getTime() / 1000);
   if (value instanceof Set) return Array.from(value, prepare);
   if (value instanceof Map) return Object.fromEntries(Array.from(value, ([k, v]) => [k, prepare(v)]));
@@ -23,7 +48,9 @@ function prepare(value: any): any {
 
 /** Python json.dumps default (ensure_ascii=True, separators=(", ", ": ")) */
 export function pyJsonDumps(data: any, compact = false): string {
-  const json = (JSON.stringify(prepare(data), encodeValue) ?? 'null').replace(/"__PYBIGINT__(-?\d+)__"/g, '$1');
+  const json = (JSON.stringify(prepare(data), encodeValue) ?? 'null')
+    .replace(/"__PYBIGINT__(-?\d+)__"/g, '$1')
+    .replace(/"__PYFLOAT__([^"_]+)__"/g, '$1');
   const ascii = json.replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
   if (compact) return ascii;
   return addPySpacing(ascii);

@@ -10,6 +10,8 @@ import { ShareMixin } from './mixins/share';
 import { TrackMixin } from './mixins/track';
 import { FbSearchMixin } from './mixins/fbsearch';
 import { HighlightMixin } from './mixins/highlight';
+import { DownloadPhotoMixin, UploadPhotoMixin } from './mixins/photo';
+import { DownloadVideoMixin, UploadVideoMixin } from './mixins/video';
 import { NotificationMixin } from './mixins/notification';
 import { MediaMixin } from './mixins/media';
 import { UserMixin } from './mixins/user';
@@ -54,6 +56,10 @@ export interface Client extends PublicRequestMixin,
   TrackMixin,
   FbSearchMixin,
   HighlightMixin,
+  DownloadPhotoMixin,
+  UploadPhotoMixin,
+  DownloadVideoMixin,
+  UploadVideoMixin,
   NotificationMixin,
   MediaMixin,
   UserMixin,
@@ -98,6 +104,10 @@ export const MIXINS = [
   TrackMixin,
   FbSearchMixin,
   HighlightMixin,
+  DownloadPhotoMixin,
+  UploadPhotoMixin,
+  DownloadVideoMixin,
+  UploadVideoMixin,
   NotificationMixin,
   MediaMixin,
   UserMixin,
