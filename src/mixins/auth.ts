@@ -17,7 +17,7 @@ import {
 import { CookieJar } from '../http/session';
 import { ModelValidationError, UserShort, makeUserShort } from '../types';
 import { genToken, generateJazoest } from '../utils/auth';
-import { deepcopy, dumps, pyJsonDumps } from '../utils/serialization';
+import { deepcopy, dumps, pyInt, pyJsonDumps } from '../utils/serialization';
 import { now, randomChoice, randomInt } from '../utils/timing';
 import type { Client } from '../client';
 
@@ -73,7 +73,7 @@ export class PreLoginFlowMixin {
     };
     if (login === false) {
       data._uuid = this.uuid;
-      data._uid = this.userId;
+      data._uid = this.userIdInt;
       data._csrftoken = this.token;
     }
     // headers={"X-DEVICE-ID": self.uuid}
@@ -84,7 +84,7 @@ export class PreLoginFlowMixin {
   async syncLauncher(this: Client, login = false): Promise<any> {
     const data: Record<string, any> = { id: this.uuid, server_config_retrieval: '1' };
     if (login === false) {
-      data._uid = this.userId;
+      data._uid = this.userIdInt;
       data._uuid = this.uuid;
       data._csrftoken = this.token;
     }
@@ -835,6 +835,13 @@ export class LoginMixin {
     if (!userId && pyTruthy(self.authorizationData)) userId = self.authorizationData.ds_user_id;
     if (userId) return BigInt(String(userId).trim()).toString();
     return null;
+  }
+
+  /** user id as python int (number, or BigInt beyond the safe range) — used where python serializes the int */
+  get userIdInt(): number | bigint | null {
+    const self = this as unknown as Client;
+    const id = self.userId;
+    return id === null ? null : pyInt(id);
   }
 
   get device(): Record<string, any> {

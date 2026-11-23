@@ -10,7 +10,7 @@ function prepare(value: any): any {
   if (value instanceof Date) return Math.floor(value.getTime() / 1000);
   if (value instanceof Set) return Array.from(value, prepare);
   if (value instanceof Map) return Object.fromEntries(Array.from(value, ([k, v]) => [k, prepare(v)]));
-  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'bigint') return `__PYBIGINT__${value.toString()}__`;
   if (Array.isArray(value)) return value.map(prepare);
   if (value && typeof value === 'object' && !(value instanceof URL)) {
     const out: Record<string, any> = {};
@@ -23,7 +23,7 @@ function prepare(value: any): any {
 
 /** Python json.dumps default (ensure_ascii=True, separators=(", ", ": ")) */
 export function pyJsonDumps(data: any, compact = false): string {
-  const json = JSON.stringify(prepare(data), encodeValue) ?? 'null';
+  const json = (JSON.stringify(prepare(data), encodeValue) ?? 'null').replace(/"__PYBIGINT__(-?\d+)__"/g, '$1');
   const ascii = json.replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
   if (compact) return ascii;
   return addPySpacing(ascii);
@@ -135,4 +135,10 @@ export function htmlUnescape(s: string): string {
     }
     return named[ent.toLowerCase()] ?? m;
   });
+}
+
+/** python int(): returns number when safe, BigInt otherwise (serialized as a raw JSON number) */
+export function pyInt(v: any): number | bigint {
+  const b = BigInt(String(v).trim());
+  return b >= BigInt(Number.MIN_SAFE_INTEGER) && b <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(b) : b;
 }

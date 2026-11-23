@@ -1,9 +1,23 @@
 /* eslint-disable @typescript-eslint/no-unsafe-declaration-merging */
 import { ClientBase, ClientOptions } from './base';
 import { PublicRequestMixin, TopSearchesPublicMixin, ProfilePublicMixin } from './mixins/public';
+import { ChallengeResolveMixin } from './mixins/challenge';
 import { PrivateRequestMixin } from './mixins/private';
 import { PrivateGraphQLRequestMixin } from './mixins/graphql';
 import { LoginMixin, PreLoginFlowMixin, PostLoginFlowMixin } from './mixins/auth';
+import { ShareMixin } from './mixins/share';
+import { AccountMixin } from './mixins/account';
+import { PasswordMixin } from './mixins/password';
+import { SignUpMixin } from './mixins/signup';
+import { ReelsMixin } from './mixins/timeline';
+import { ExploreMixin } from './mixins/explore';
+import { DeviceAttestationMixin } from './mixins/attestation';
+import { BloksMixin } from './mixins/bloks';
+import { TOTPMixin } from './mixins/totp';
+import { MultipleAccountsMixin } from './mixins/multipleAccounts';
+import { QuickSnapMixin } from './mixins/quicksnap';
+import { FundraiserMixin } from './mixins/fundraiser';
+import { CaptchaHandlerMixin } from './mixins/captcha';
 
 /**
  * Instagram Private API client (port of instagrapi.Client).
@@ -13,13 +27,27 @@ import { LoginMixin, PreLoginFlowMixin, PostLoginFlowMixin } from './mixins/auth
  */
 // prettier-ignore
 export interface Client extends PublicRequestMixin,
+  ChallengeResolveMixin,
   PrivateRequestMixin,
   PrivateGraphQLRequestMixin,
   TopSearchesPublicMixin,
   ProfilePublicMixin,
   LoginMixin,
   PreLoginFlowMixin,
-  PostLoginFlowMixin {}
+  PostLoginFlowMixin,
+  ShareMixin,
+  AccountMixin,
+  PasswordMixin,
+  SignUpMixin,
+  ReelsMixin,
+  ExploreMixin,
+  DeviceAttestationMixin,
+  BloksMixin,
+  TOTPMixin,
+  MultipleAccountsMixin,
+  QuickSnapMixin,
+  FundraiserMixin,
+  CaptchaHandlerMixin {}
 
 export class Client extends ClientBase {
   constructor(options: ClientOptions = {}) {
@@ -29,6 +57,7 @@ export class Client extends ClientBase {
 
 export const MIXINS = [
   PublicRequestMixin,
+  ChallengeResolveMixin,
   PrivateRequestMixin,
   PrivateGraphQLRequestMixin,
   TopSearchesPublicMixin,
@@ -36,6 +65,19 @@ export const MIXINS = [
   LoginMixin,
   PreLoginFlowMixin,
   PostLoginFlowMixin,
+  ShareMixin,
+  AccountMixin,
+  PasswordMixin,
+  SignUpMixin,
+  ReelsMixin,
+  ExploreMixin,
+  DeviceAttestationMixin,
+  BloksMixin,
+  TOTPMixin,
+  MultipleAccountsMixin,
+  QuickSnapMixin,
+  FundraiserMixin,
+  CaptchaHandlerMixin,
 ];
 
 // Python MRO: the first mixin defining a name wins, so install in reverse order.
