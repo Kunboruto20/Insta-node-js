@@ -2,6 +2,7 @@
  * Instagram realtime (edge-mqtt.facebook.com) MQTToT client.
  */
 import * as Boom from '@hapi/boom';
+import { guardMethods } from '../core/boomErrors';
 import { randomUUID } from 'crypto';
 import {
   MQTToTConnection,
@@ -526,3 +527,6 @@ export function textValue(value: any): string {
   if (Buffer.isBuffer(value)) return `b${reprValue(value.toString('latin1'))}`;
   return reprValue(value);
 }
+
+// Every error thrown by the realtime client is a Boom error.
+guardMethods(RealtimeClient.prototype);

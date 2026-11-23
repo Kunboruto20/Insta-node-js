@@ -1,4 +1,5 @@
 import * as Boom from '@hapi/boom';
+import { guardMethods } from '../core/boomErrors';
 import { existsSync } from 'node:fs';
 import sharp from 'sharp';
 import { StoryBuild, StoryMention, StorySticker, makeStoryBuild, makeStorySticker } from '../models/schemas';
@@ -246,3 +247,6 @@ async function runFfmpeg(args: string[]) {
     throw e;
   }
 }
+
+// Every error thrown by StoryBuilder is a Boom error.
+guardMethods(StoryBuilder.prototype);

@@ -373,7 +373,7 @@ export class DirectFeature {
     if (uids.length) tids = [await this._directThreadIdFromUserIds(uids, 'photo')];
     const ext = path.extname(filePath).toLowerCase();
     if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw Boom.unsupportedMediaType('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
-    const [photoBytes] = await prepareImage(filePath);
+    const [photoBytes] = await prepareImage(await this._loadMediaSource(filePath));
     const entityName = `fb_uploader_${Date.now()}`;
     const mediaId = await this._photoRupload(photoBytes, entityName);
     const token = this.generateMutationToken();

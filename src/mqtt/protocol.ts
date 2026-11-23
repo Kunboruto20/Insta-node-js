@@ -5,7 +5,7 @@
  * protocol writer/reader. No external MQTT library is required.
  */
 import * as Boom from '@hapi/boom';
-import { boomifyError } from '../core/boomErrors';
+import { boomifyError, guardMethods } from '../core/boomErrors';
 import * as net from 'net';
 import * as tls from 'tls';
 import * as zlib from 'zlib';
@@ -310,6 +310,15 @@ export class SocketMQTToTTransport implements MQTToTTransport {
   }
 
   async connect(): Promise<void> {
+    try {
+      await this._connect();
+    } catch (e: any) {
+      if (e instanceof MQTToTConnectionError || e instanceof MQTToTTimeoutError) throw e;
+      throw new MQTToTConnectionError(`MQTT connection to ${this.host}:${this.port} failed: ${e?.message ?? e}`);
+    }
+  }
+
+  private async _connect(): Promise<void> {
     const raw = this.proxy ? await this._createProxyConnection() : await this._createConnection();
     this.sock = await new Promise<tls.TLSSocket>((resolve, reject) => {
       const s = tls.connect({ ...this.tlsOptions, socket: raw, servername: this.host, host: this.host });
@@ -383,18 +392,23 @@ export class SocketMQTToTTransport implements MQTToTTransport {
     if (proxyType === 0) return this._httpConnect(hostname, port, username, password);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { SocksClient } = require('socks');
-    const { socket } = await SocksClient.createConnection({
-      proxy: {
-        host: hostname,
-        port,
-        type: proxyType,
-        userId: username ?? undefined,
-        password: password ?? undefined,
-      },
-      command: 'connect',
-      destination: { host: this.host, port: this.port },
-      timeout: this.timeout * 1000,
-    });
+    let socket: net.Socket;
+    try {
+      ({ socket } = await SocksClient.createConnection({
+        proxy: {
+          host: hostname,
+          port,
+          type: proxyType,
+          userId: username ?? undefined,
+          password: password ?? undefined,
+        },
+        command: 'connect',
+        destination: { host: this.host, port: this.port },
+        timeout: this.timeout * 1000,
+      }));
+    } catch (e: any) {
+      throw new MQTToTConnectionError(`SOCKS proxy connection failed: ${e?.message ?? e}`);
+    }
     return socket;
   }
 
@@ -405,12 +419,16 @@ export class SocketMQTToTTransport implements MQTToTTransport {
         s.destroy();
         reject(new MQTToTTimeoutError('proxy connect timed out'));
       }, this.timeout * 1000);
+      let settled = false;
       const fail = (e: Error) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         s.destroy();
         reject(e);
       };
       s.once('error', fail);
+      s.once('close', () => fail(new MQTToTConnectionError('HTTP proxy closed the connection before answering CONNECT')));
       s.once('connect', () => {
         let req = `CONNECT ${this.host}:${this.port} HTTP/1.1\r\nHost: ${this.host}:${this.port}\r\n`;
         if (username !== null) {
@@ -430,8 +448,10 @@ export class SocketMQTToTTransport implements MQTToTTransport {
             fail(new MQTToTConnectionError(`HTTP proxy CONNECT failed: ${statusLine}`));
             return;
           }
+          settled = true;
           clearTimeout(timer);
           s.removeListener('error', fail);
+          s.removeAllListeners('close');
           const rest = acc.subarray(end + 4);
           if (rest.length) s.unshift(rest);
           resolve(s);
@@ -844,3 +864,6 @@ export function decodeUtf8Strict(data: Buffer): string {
 }
 
 export type RealtimeHandler = (payload: any) => void | Promise<void>;
+
+// Every error thrown by the transport is a Boom error.
+guardMethods(SocketMQTToTTransport.prototype);

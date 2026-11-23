@@ -62,6 +62,9 @@ export class ClientBase {
 
   proxy: string | null = null;
   tlsVerify: boolean | string = true;
+  /** session used for media downloads (same proxy / TLS settings as the API) */
+  _downloadSession: Session | null = null;
+  _downloadSessionKey = '';
   requestTimeout = 1;
   readTimeout = 25;
   publicRequestRetriesCount = 3;

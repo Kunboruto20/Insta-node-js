@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-declaration-merging */
 import { ClientBase, ClientOptions } from './clientCore';
+import { guardMethods } from './boomErrors';
 import { PublicRequestFeature, TopSearchesPublicFeature, ProfilePublicFeature } from '../features/webApi';
 import { ChallengeResolveFeature } from '../features/securityChallenge';
 import { PrivateRequestFeature } from '../features/mobileApi';
@@ -162,5 +163,9 @@ for (const feature of [...FEATURES].reverse()) {
     Object.defineProperty(Client.prototype, name, Object.getOwnPropertyDescriptor(feature.prototype, name)!);
   }
 }
+
+// Every error thrown by a client method is a Boom error.
+guardMethods(Client.prototype);
+guardMethods(ClientBase.prototype);
 
 export default Client;

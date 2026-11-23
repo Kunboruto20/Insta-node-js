@@ -4,7 +4,6 @@ import * as path from 'node:path';
 import sharp from 'sharp';
 import * as config from '../core/defaults';
 import { ClientError, PhotoConfigureError, PhotoConfigureStoryError, PhotoNotUpload } from '../core/errorClasses';
-import { get as httpGet } from '../net/httpClient';
 import { prepareImage, prepareStoryImageFit } from '../media/imageTools';
 import {
   Location,
@@ -104,7 +103,7 @@ export class DownloadPhotoFeature {
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
     if (existsSync(filePath) && !overwrite) return path.resolve(filePath);
-    const response = await httpGet(url, this._downloadRequestOptions());
+    const response = await this._downloadGet(url);
     response.raise_for_status();
     return this._downloadResponseToPath(response, filePath);
   }
@@ -112,7 +111,7 @@ export class DownloadPhotoFeature {
   /** Download photo using URL, returns bytes */
   async photoDownloadByUrlOrigin(this: Client, url: string): Promise<Buffer> {
     url = String(url);
-    const response = await httpGet(url, this._downloadRequestOptions());
+    const response = await this._downloadGet(url);
     response.raise_for_status();
     return this._downloadResponseBytes(response, url);
   }
@@ -157,9 +156,10 @@ export class UploadPhotoFeature {
     if (toAlbum) ruploadParams.is_sidecar = '1';
     let photoData: Buffer;
     let photoSize: [number, number];
-    if (forStory && resizeMode === 'fit') [photoData, photoSize] = await prepareStoryImageFit(filePath);
-    else if (forStory) [photoData, photoSize] = await prepareImage(filePath, [1080, 1920], [9 / 16, 90 / 47]);
-    else [photoData, photoSize] = await prepareImage(filePath);
+    const source = await this._loadMediaSource(filePath);
+    if (forStory && resizeMode === 'fit') [photoData, photoSize] = await prepareStoryImageFit(source);
+    else if (forStory) [photoData, photoSize] = await prepareImage(source, [1080, 1920], [9 / 16, 90 / 47]);
+    else [photoData, photoSize] = await prepareImage(source);
     const photoLen = String(photoData.length);
     const headers = this.privateHeaders({
       'Accept-Encoding': 'gzip',

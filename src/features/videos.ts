@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import * as config from '../core/defaults';
 import { VideoConfigureError, VideoConfigureStoryError, VideoNotUpload } from '../core/errorClasses';
-import { get as httpGet } from '../net/httpClient';
 import { StoryBuilder } from '../media/storyComposer';
 import {
   DirectMessage,
@@ -63,14 +62,14 @@ export class DownloadVideoFeature {
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
     if (existsSync(filePath) && !overwrite) return path.resolve(filePath);
-    const response = await httpGet(url, this._downloadRequestOptions());
+    const response = await this._downloadGet(url);
     response.raise_for_status();
     return this._downloadResponseToPath(response, filePath);
   }
 
   /** Download video using URL, returns bytes */
   async videoDownloadByUrlOrigin(this: Client, url: string): Promise<Buffer> {
-    const response = await httpGet(url, this._downloadRequestOptions());
+    const response = await this._downloadGet(url);
     response.raise_for_status();
     return this._downloadResponseBytes(response, url);
   }

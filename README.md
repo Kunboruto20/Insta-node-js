@@ -51,7 +51,7 @@ A complete **Instagram Private API** client for **Node.js**, written in **TypeSc
 - [Error handling (Boom)](#error-handling-boom)
 - [Logging](#logging)
 - [Models](#models)
-- [Scripts](#scripts)
+- [Building and publishing](#building-and-publishing)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 
@@ -64,7 +64,15 @@ A complete **Instagram Private API** client for **Node.js**, written in **TypeSc
 
 ## Installation
 
-From GitHub:
+From npm:
+
+```bash
+npm install insta-node-js
+```
+
+The npm package name is lowercase (`insta-node-js`), as npm requires; the GitHub repository is `Kunboruto20/Insta-node-js`.
+
+Latest version from GitHub (compiled automatically during install):
 
 ```bash
 npm install github:Kunboruto20/Insta-node-js
@@ -77,8 +85,10 @@ git clone https://github.com/Kunboruto20/Insta-node-js.git
 ```
 
 ```bash
-cd Insta-node-js && npm install && npm run build
+cd Insta-node-js && npm install
 ```
+
+`npm install` also compiles the TypeScript sources into `dist/`.
 
 ## Dependencies
 
@@ -288,7 +298,7 @@ cl.setProxy('socks5://user:pass@1.2.3.4:1080');
 cl.setProxy(null); // no proxy
 ```
 
-The proxy is used for HTTP requests and for the realtime / FBNS MQTT connections (`http`, `https`, `socks4`, `socks4a`, `socks5`, `socks5h`).
+The proxy is used for every connection the client makes: API and web requests, media downloads (including images passed to uploads as URLs) and the realtime / FBNS MQTT connections (`http`, `https`, `socks4`, `socks4a`, `socks5`, `socks5h`).
 
 ## Device, locale and timezone
 
@@ -756,17 +766,17 @@ Status codes used by the library:
 | --- | --- |
 | 400 | invalid arguments, `InvalidTargetUser`, `InvalidMediaId`, `AlbumUnknownFormat`, `VideoTooLongException` |
 | 401 | `LoginRequired`, `ClientLoginRequired`, `BadPassword`, `BadCredentials`, `TwoFactorRequired`, `ReloginAttemptExceeded` |
-| 403 | `ChallengeRequired` (and all challenge errors), `FeedbackRequired`, `SentryBlock`, `ProxyAddressIsBlocked`, `PrivateAccount`, `AccountSuspended`, `CaptchaChallengeRequired` |
-| 404 | `UserNotFound`, `MediaNotFound`, `StoryNotFound`, `HashtagNotFound`, `LocationNotFound`, `DirectThreadNotFound`, `CommentNotFound`, ... |
+| 403 | `ChallengeRequired` (and all challenge errors), `FeedbackRequired`, `SentryBlock`, `ProxyAddressIsBlocked`, `PrivateAccount`, `AccountSuspended`, `CaptchaChallengeRequired`, local files without read permission (`EACCES`) |
+| 404 | `UserNotFound`, `MediaNotFound`, `StoryNotFound`, `HashtagNotFound`, `LocationNotFound`, `DirectThreadNotFound`, `CommentNotFound`, ..., and missing local files (`ENOENT`) |
 | 408 | realtime / FBNS read timeout (`err.name === 'TimeoutError'`) |
 | 412 | realtime / FBNS client not connected |
-| 415 | unsupported file format |
+| 415 | unsupported file format or unreadable image |
 | 422 | unexpected data from Instagram, `ModelValidationError` |
 | 424 | ffmpeg / ffprobe missing |
 | 429 | `PleaseWaitFewMinutes`, `RateLimitError`, `ClientThrottledError` |
-| 5xx | network and transport errors (`ClientConnectionError`, `ClientJSONDecodeError`, `ClientGraphqlError`, ...) |
+| 5xx | network and transport errors (`ClientConnectionError`, `ClientJSONDecodeError`, `ClientGraphqlError`, proxy and MQTT connection errors: 503), unexpected internal errors (500) |
 
-Errors without a fixed status use the HTTP status of Instagram's response.
+Errors without a fixed status use the HTTP status of Instagram's response. Errors raised by Node.js or by dependencies (file system, sockets, image decoding) are converted to Boom errors too; their original class, message and `code` (e.g. `ENOENT`) are kept.
 
 Global handler for private API errors. If the handler returns normally, the failed request is **retried**; throw to give up:
 
@@ -842,18 +852,47 @@ const loc = makeLocation({ name: 'Eiffel Tower', lat: 48.8584, lng: 2.2945 });
 
 Validation failures throw `ModelValidationError` (Boom 422, details in `err.data.errors`).
 
-## Scripts
+## Building and publishing
+
+The TypeScript sources live in `src/`. The compiled package lives in `dist/`, which is generated and not committed to git.
+
+| Command | What it does |
+| --- | --- |
+| `npm install` | installs dependencies and compiles `src/` into `dist/` (`prepare` script) |
+| `npm run build` | compiles `src/` into `dist/` |
+| `npm run clean` | deletes `dist/` |
+| `npm run typecheck` | type-checks without writing files |
+| `npm test` | runs the test suite |
+
+For every file in `src/`, the build writes four files to `dist/`:
+
+| File | Content |
+| --- | --- |
+| `*.js` | the compiled JavaScript |
+| `*.d.ts` | the TypeScript type declarations |
+| `*.js.map` | the source map, with the TypeScript source embedded |
+| `*.d.ts.map` | the declaration map (go-to-definition in editors) |
+
+Publishing to npm:
 
 ```bash
-npm run build
+npm login
 ```
 
 ```bash
-npm run typecheck
+npm publish
 ```
 
+`npm publish` first runs `prepublishOnly`: the tests, a clean build and the type check. The package contains only `dist/`, `README.md`, `LICENSE` and `package.json`; the TypeScript sources stay on GitHub. To see exactly what would be uploaded without publishing:
+
 ```bash
-npm test
+npm publish --dry-run
+```
+
+Before each new release, bump the version:
+
+```bash
+npm version patch
 ```
 
 ## Disclaimer
