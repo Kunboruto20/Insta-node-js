@@ -46,7 +46,7 @@ test('exception hierarchy', () => {
 });
 
 test('bigint-safe json parsing keeps ids exact', () => {
-  const data = ig.json.parseJson('{"pk": 3141592653589793238, "n": 1}');
+  const data = ig.bigJson.parseJson('{"pk": 3141592653589793238, "n": 1}');
   assert.equal(String(data.pk), '3141592653589793238');
   assert.equal(data.n, 1);
 });

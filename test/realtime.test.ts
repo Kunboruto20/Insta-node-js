@@ -10,10 +10,10 @@ import {
   writeSubscribePacket,
   writeThriftObject,
   MQTToTTransport,
-} from '../src/realtime/mqttot';
-import { RealtimeClient } from '../src/realtime/client';
-import { FbnsClient, FbnsDeviceAuth } from '../src/realtime/fbns';
-import { Client } from '../src/client';
+} from '../src/mqtt/protocol';
+import { RealtimeClient } from '../src/mqtt/realtimeClient';
+import { FbnsClient, FbnsDeviceAuth } from '../src/mqtt/pushClient';
+import { Client } from '../src/core/instaClient';
 
 // Known-good reference encodings.
 const CONNECT_THRIFT =
