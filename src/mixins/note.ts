@@ -1,7 +1,7 @@
 import { ClientGraphqlError } from '../exceptions';
 import { Note, Track, makeNote, makeUserShort } from '../types';
 import { dumps } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const INBOX_TRAY_CLIENT_DOC_ID = '26838444193647008103482058049';
@@ -21,7 +21,7 @@ function isDict(v: any): v is Record<string, any> {
 
 export class NoteMixin {
   _noteAudienceValue(this: Client, audience: NoteAudience): number {
-    pyAssert(
+    ensure(
       audience === NoteAudience.MUTUAL_FOLLOWERS || audience === NoteAudience.CLOSE_FRIENDS,
       `Invalid audience parameter=${audience} (must be NoteAudience.MUTUAL_FOLLOWERS or NoteAudience.CLOSE_FRIENDS)`,
     );
@@ -152,7 +152,7 @@ export class NoteMixin {
   /** Retrieve music candidates for Instagram Notes (raw music/notes_audio_browser/ response). */
   async notesMusicBrowser(this: Client): Promise<any> {
     const result = await this.privateRequest('music/notes_audio_browser/', { product: 'music_notes', _uuid: this.uuid }, { withSignature: false });
-    pyAssert((result.status ?? '') === 'ok', 'Failed to retrieve Notes music');
+    ensure((result.status ?? '') === 'ok', 'Failed to retrieve Notes music');
     return result;
   }
 
@@ -174,7 +174,7 @@ export class NoteMixin {
 
   /** Create personal Note */
   async createNote(this: Client, text: string, audience: NoteAudience = NoteAudience.MUTUAL_FOLLOWERS): Promise<Note> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const audienceValue = this._noteAudienceValue(audience);
     const variables = {
       should_fetch_content_note_stack_video_info: false,
@@ -202,16 +202,16 @@ export class NoteMixin {
     browseSessionId: string | null = null,
     alacornSessionId: string | null = null,
   ): Promise<Note> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const audienceValue = this._noteAudienceValue(audience);
     const audioAssetId = this._trackValue(track, 'audio_asset_id') || this._trackValue(track, 'id');
     const audioClusterId = this._trackValue(track, 'audio_cluster_id');
-    pyAssert(audioAssetId, 'track.audio_asset_id or track.id is required');
-    pyAssert(audioClusterId, 'track.audio_cluster_id is required');
+    ensure(audioAssetId, 'track.audio_asset_id or track.id is required');
+    ensure(audioClusterId, 'track.audio_cluster_id is required');
     if (startTime === null || startTime === undefined) startTime = this._trackHighlightStart(track);
     if (!browseSessionId) browseSessionId = this.generateUuid();
     if (!alacornSessionId) alacornSessionId = (await this.notesMusicBrowser()).alacorn_session_id;
-    pyAssert(alacornSessionId, 'alacorn_session_id is required');
+    ensure(alacornSessionId, 'alacorn_session_id is required');
     const variables = {
       should_fetch_content_note_stack_video_info: false,
       request: {

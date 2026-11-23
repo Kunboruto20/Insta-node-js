@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ChallengeError, ClientError } from '../exceptions';
 import { rawDecode, simpleCookieLoad } from '../utils/json';
 import { dumps } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { ChallengeChoice } from './challenge';
 import type { Client } from '../client';
 
@@ -30,7 +30,7 @@ function isAscii(s: string): boolean {
 export class BloksMixin {
   _bloksPayload(this: Client, params: Record<string, any>, bloksVersioningId = ''): Record<string, string> {
     const versioningId = bloksVersioningId || this.bloksVersioningId;
-    pyAssert(versioningId, 'Client.bloks_versioning_id is empty (hash is expected)');
+    ensure(versioningId, 'Client.bloks_versioning_id is empty (hash is expected)');
     return {
       params: dumps(params),
       _uuid: this.uuid,
@@ -88,7 +88,7 @@ export class BloksMixin {
     infraDeviceId = '',
   ): Promise<any> {
     const versioningId = bloksVersioningId || this.bloksVersioningId;
-    pyAssert(versioningId, 'Client.bloks_versioning_id is empty (hash is expected)');
+    ensure(versioningId, 'Client.bloks_versioning_id is empty (hash is expected)');
     const variables = {
       params: {
         params: dumps({ params: dumps(params) }),
@@ -114,7 +114,7 @@ export class BloksMixin {
     bloksVersioningId = '',
   ): Promise<any> {
     const versioningId = bloksVersioningId || this.bloksVersioningId;
-    pyAssert(versioningId, 'Client.bloks_versioning_id is empty (hash is expected)');
+    ensure(versioningId, 'Client.bloks_versioning_id is empty (hash is expected)');
     const data: Record<string, any> = {
       _uuid: this.uuid,
       has_follow_up_screens: String(hasFollowUpScreens),

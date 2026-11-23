@@ -1,6 +1,8 @@
 /** Bounded readers for the additional-profile flow; never execute Bloks code. */
+import * as Boom from '@hapi/boom';
+import { boomifyError } from './errors';
 import { deepEqual, stableStringify } from './utils/compare';
-import { pyJsonDumps } from './utils/serialization';
+import { jsonDumps } from './utils/serialization';
 
 export const FLOW = { flow_type: 'spc', flow_name: 'secondary_profile_creation_ig_default' };
 export const DOC_ID = '356548512611906258864738750706';
@@ -16,7 +18,8 @@ const _MAX_SIZE = 2_000_000;
 class SpcValueError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'ValueError';
+    this.name = 'SpcValueError';
+    boomifyError(this, 422, { code: 'MALFORMED_RESPONSE' });
   }
 }
 
@@ -61,7 +64,7 @@ export function _vm(text: string): any[] {
 
 /** Expand JSON strings and literal VM syntax within strict resource limits. */
 export function* _walk(value: any): Generator<any> {
-  if (pyJsonDumps(value).length > _MAX_SIZE) throw new SpcValueError('SPC response too large');
+  if (jsonDumps(value).length > _MAX_SIZE) throw new SpcValueError('SPC response too large');
   const pending: Array<[any, number]> = [[value, 0]];
   const seenStrings = new Set<string>();
   let count = 0;
@@ -179,7 +182,7 @@ export function registration(
   parentId: string,
   username: string,
 ): [Record<string, any>, Record<string, any>, Record<string, any>, Record<string, string>] {
-  if (pyJsonDumps(response).length > _MAX_SIZE) throw new SpcValueError('SPC response too large');
+  if (jsonDumps(response).length > _MAX_SIZE) throw new SpcValueError('SPC response too large');
   const wrappers = new Map<string, any>();
   for (const action of _rootActions(response)) {
     for (const item of _walk(action)) {
@@ -215,7 +218,7 @@ export function registration(
   let auth: any;
   try {
     const b64 = authorization.slice('Bearer IGT:2:'.length);
-    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64) || b64.length % 4 !== 0) throw new Error('invalid base64');
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64) || b64.length % 4 !== 0) throw Boom.badData('Invalid base64');
     auth = JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
   } catch {
     throw new SpcValueError('Malformed SPC authorization');

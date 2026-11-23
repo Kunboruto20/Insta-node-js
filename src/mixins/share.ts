@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { Share, makeShare } from '../types';
 import type { Client } from '../client';
 
@@ -22,7 +23,7 @@ export class ShareMixin {
     const path = new URL(url, 'http://placeholder').pathname;
     const parts = path.split('/').filter((p) => p);
     const last = parts.pop();
-    if (last === undefined) throw new RangeError('pop from empty list');
+    if (last === undefined) throw Boom.badRequest('Invalid share URL');
     return last;
   }
 }

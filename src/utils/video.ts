@@ -1,12 +1,13 @@
+import * as Boom from '@hapi/boom';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { FFMPEG_INSTALL_MESSAGE, FfmpegUnavailableError, ffmpeg, probe } from './ffmpeg';
 
-export const MOVIEPY_2_INSTALL_MESSAGE = FFMPEG_INSTALL_MESSAGE;
-export const MOVIEPY_2_FFMPEG_MESSAGE = `${MOVIEPY_2_INSTALL_MESSAGE} Make sure ffmpeg is executable or set FFMPEG_PATH.`;
-export const THUMBNAIL_FFMPEG_MESSAGE = `Could not generate video thumbnail. Pass thumbnail=... or install ffmpeg. ${MOVIEPY_2_FFMPEG_MESSAGE}`;
+export { FFMPEG_INSTALL_MESSAGE };
+export const FFMPEG_HINT_MESSAGE = `${FFMPEG_INSTALL_MESSAGE} Make sure ffmpeg is executable or set FFMPEG_PATH.`;
+export const THUMBNAIL_FFMPEG_MESSAGE = `Could not generate video thumbnail. Pass thumbnail=... or install ffmpeg. ${FFMPEG_HINT_MESSAGE}`;
 export const METADATA_FFMPEG_MESSAGE =
   'Could not read video metadata with the MP4 parser and ffmpeg/ffprobe is unavailable. ' +
-  `Use a standard MP4 file, or install ffmpeg. ${MOVIEPY_2_FFMPEG_MESSAGE}`;
+  `Use a standard MP4 file, or install ffmpeg. ${FFMPEG_HINT_MESSAGE}`;
 
 export interface VideoMetadata {
   width: number;
@@ -29,11 +30,11 @@ function* iterBoxes(data: Buffer): Generator<[string, Buffer]> {
     const boxType = data.toString('latin1', pos + 4, pos + 8);
     let headerSize = 8;
     if (size === 1) {
-      if (pos + 16 > end) throw new Error('Invalid MP4 box with incomplete extended size');
+      if (pos + 16 > end) throw Boom.badData('Invalid MP4 box with incomplete extended size');
       size = Number(data.readBigUInt64BE(pos + 8));
       headerSize = 16;
     } else if (size === 0) size = end - pos;
-    if (size < headerSize || pos + size > end) throw new Error('Invalid MP4 box size');
+    if (size < headerSize || pos + size > end) throw Boom.badData('Invalid MP4 box size');
     const boxEnd = pos + size;
     yield [boxType, data.subarray(pos + headerSize, boxEnd)];
     pos = boxEnd;
@@ -53,11 +54,11 @@ function readMoov(file: string): Buffer {
       const boxType = header.toString('latin1', 4, 8);
       let headerSize = 8;
       if (size === 1) {
-        if (readSync(fd, header, 8, 8, pos + 8) < 8) throw new Error('Invalid MP4 box with incomplete extended size');
+        if (readSync(fd, header, 8, 8, pos + 8) < 8) throw Boom.badData('Invalid MP4 box with incomplete extended size');
         size = Number(header.readBigUInt64BE(8));
         headerSize = 16;
       } else if (size === 0) size = fileSize - boxStart;
-      if (size < headerSize || boxStart + size > fileSize) throw new Error('Invalid MP4 box size');
+      if (size < headerSize || boxStart + size > fileSize) throw Boom.badData('Invalid MP4 box size');
       const payloadSize = size - headerSize;
       if (boxType === 'moov') {
         const buf = Buffer.alloc(payloadSize);
@@ -69,7 +70,7 @@ function readMoov(file: string): Buffer {
   } finally {
     closeSync(fd);
   }
-  throw new Error("MP4 metadata box 'moov' was not found");
+  throw Boom.badData("MP4 metadata box 'moov' was not found");
 }
 
 function parseMvhd(data: Buffer): number | null {
@@ -131,9 +132,9 @@ export function readVideoMetadata(file: string): VideoMetadata {
   }
   let videoTrack = tracks.find((t) => t.handlerType === 'vide' && t.width !== null && t.height !== null);
   if (!videoTrack) videoTrack = tracks.find((t) => t.width !== null && t.height !== null);
-  if (!videoTrack) throw new Error('MP4 video track dimensions were not found');
+  if (!videoTrack) throw Boom.badData('MP4 video track dimensions were not found');
   const duration = movieDuration !== null ? movieDuration : videoTrack.duration;
-  if (duration === null) throw new Error('MP4 video duration was not found');
+  if (duration === null) throw Boom.badData('MP4 video duration was not found');
   return { width: videoTrack.width!, height: videoTrack.height!, duration: Number(duration) };
 }
 
@@ -142,7 +143,7 @@ export async function readVideoMetadataWithFfprobe(file: string): Promise<VideoM
     const info = await probe(file);
     return { width: info.width, height: info.height, duration: info.duration };
   } catch (e) {
-    if (e instanceof FfmpegUnavailableError) throw new Error(METADATA_FFMPEG_MESSAGE);
+    if (e instanceof FfmpegUnavailableError) throw Boom.failedDependency(METADATA_FFMPEG_MESSAGE);
     throw e;
   }
 }
@@ -165,7 +166,7 @@ export async function generateVideoThumbnail(
     const frameTime = duration !== null ? duration : (await probe(file)).duration;
     await ffmpeg(['-ss', String(frameTime / 2), '-i', file, '-frames:v', '1', '-q:v', '2', thumbnail]);
   } catch (e) {
-    if (e instanceof FfmpegUnavailableError) throw new Error(THUMBNAIL_FFMPEG_MESSAGE);
+    if (e instanceof FfmpegUnavailableError) throw Boom.failedDependency(THUMBNAIL_FFMPEG_MESSAGE);
     throw e;
   }
   if (cropThumbnail) await cropThumbnail(thumbnail);

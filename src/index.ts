@@ -6,7 +6,17 @@ import { Client } from './client';
 
 export { Client, MIXINS } from './client';
 export { ClientBase, ClientOptions } from './base';
+export type { ChallengeCodeHandler, ChangePasswordHandler, HandleException } from './base';
+export { ChallengeChoice } from './mixins/challenge';
+export { NoteAudience } from './mixins/note';
+export type { CaptchaHandler } from './mixins/captcha';
+export type { PhotoUploadOptions, StoryUploadOptions } from './mixins/photo';
+export type { VideoUploadOptions } from './mixins/video';
+export type { AlbumUploadOptions } from './mixins/album';
+export type { ClipUploadOptions } from './mixins/clip';
+export type { CrosspostingOptions } from './mixins/crossposting';
 export * from './exceptions';
+export { Boom, boomifyError, refreshBoom, isInvalidInput } from './errors';
 export * from './types';
 export { ModelValidationError } from './models/validator';
 export * as config from './config';

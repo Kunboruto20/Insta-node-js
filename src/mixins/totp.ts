@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { createHmac } from 'node:crypto';
 import type { Client } from '../client';
 
@@ -10,7 +11,7 @@ function base32Decode(input: string): Buffer {
   const out: number[] = [];
   for (const ch of s) {
     const idx = B32.indexOf(ch);
-    if (idx < 0) throw new Error('Non-base32 digit found');
+    if (idx < 0) throw Boom.badRequest('Non-base32 digit found');
     value = (value << 5) | idx;
     bits += 5;
     if (bits >= 8) {
@@ -40,7 +41,7 @@ export class TOTP {
 
   /** input: the HMAC counter value (counter, or computed integer based on the Unix timestamp) */
   generateOtp(input: number): string {
-    if (input < 0) throw new Error('input must be positive integer');
+    if (input < 0) throw Boom.badRequest('input must be a positive integer');
     const hmacHash = createHmac(this.digest, this.byteSecret()).update(TOTP.intToBytestring(input)).digest();
     const offset = hmacHash[hmacHash.length - 1] & 0xf;
     const code =

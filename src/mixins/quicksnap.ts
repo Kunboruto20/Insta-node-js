@@ -1,5 +1,5 @@
 import { ClientGraphqlError } from '../exceptions';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const QUICKSNAP_HISTORY_CLIENT_DOC_ID = '202528380816979569862257718136';
@@ -30,7 +30,7 @@ export class QuickSnapMixin {
 
   /** Retrieve paginated QuickSnap history (raw quick_snap_paginated_history payload with edges and page_info). */
   async quicksnapHistory(this: Client, amount = 20, endCursor: string | null = null): Promise<Record<string, any>> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const variables: Record<string, any> = { first: amount };
     if (endCursor) variables.after = endCursor;
     const result = await this.privateGraphqlWwwRequest(QUICKSNAP_HISTORY_FRIENDLY_NAME, variables, QUICKSNAP_HISTORY_CLIENT_DOC_ID);
@@ -39,7 +39,7 @@ export class QuickSnapMixin {
 
   /** Upload and publish a photo as a QuickSnap. Returns raw media/configure_to_quick_snap/ response. */
   async quicksnapSend(this: Client, photoPath: string, audience = 'mutual_followers', uploadId = ''): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const [upId] = uploadId ? await this.photoRupload(photoPath, uploadId) : await this.photoRupload(photoPath);
     const navChain = this._quickSnapNavChain();
     const data = {
@@ -69,7 +69,7 @@ export class QuickSnapMixin {
 
   /** Soft-delete an active QuickSnap. */
   async quicksnapDelete(this: Client, mediaId: string): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     mediaId = String(mediaId);
     const result = await this.privateRequest(`media/${mediaId}/soft_delete/`, { media_id: mediaId, _uuid: this.uuid });
     return result.did_delete === true;

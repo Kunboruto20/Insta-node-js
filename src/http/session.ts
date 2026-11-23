@@ -1,12 +1,13 @@
 /**
- * Minimal `requests.Session` equivalent built on undici.
+ * HTTP session built on undici.
  *
  * Features used by the library: persistent case-insensitive headers, a cookie jar
- * (domain-less cookies like python's cookiejar_from_dict are sent everywhere),
- * http(s)/socks proxies, TLS verification toggle or custom CA, urllib3-like retry
+ * (domain-less cookies are sent to every host),
+ * http(s)/socks proxies, TLS verification toggle or custom CA, retry
  * strategy, redirects, gzip/deflate/br decoding, and HTTP/2 (used by the
- * "curl"/"utls" private transports).
+ * "http2"/"mobile" transports).
  */
+import { boomifyError } from '../errors';
 import { readFileSync, statSync } from 'node:fs';
 import { promisify } from 'node:util';
 import * as zlib from 'node:zlib';
@@ -20,7 +21,9 @@ const brotli = promisify(zlib.brotliDecompress);
 
 // ---------------------------------------------------------------- errors
 
+/** Base transport error (Boom: HTTP status of the response when >= 400, otherwise the class status). */
 export class RequestException extends Error {
+  static statusCode = 502;
   response: Response | null;
   request: PreparedRequest | null;
   constructor(message: string, opts: { response?: Response | null; request?: PreparedRequest | null; cause?: unknown } = {}) {
@@ -28,14 +31,23 @@ export class RequestException extends Error {
     this.name = new.target.name;
     this.response = opts.response ?? null;
     this.request = opts.request ?? opts.response?.request ?? null;
+    const responseStatus = this.response?.status_code;
+    const status = typeof responseStatus === 'number' && responseStatus >= 400 ? responseStatus : (new.target as any).statusCode;
+    boomifyError(this, status);
   }
 }
 export class HTTPError extends RequestException {}
-export class ConnectionError extends RequestException {}
+export class ConnectionError extends RequestException {
+  static statusCode = 503;
+}
 export class ProxyError extends ConnectionError {}
 export class SSLError extends ConnectionError {}
-export class Timeout extends RequestException {}
-export class ConnectTimeout extends ConnectionError {}
+export class Timeout extends RequestException {
+  static statusCode = 504;
+}
+export class ConnectTimeout extends ConnectionError {
+  static statusCode = 504;
+}
 export class ReadTimeout extends Timeout {}
 export class ChunkedEncodingError extends RequestException {}
 export class TooManyRedirects extends RequestException {}
@@ -45,6 +57,7 @@ export class JSONDecodeError extends Error {
     super(message);
     this.name = 'JSONDecodeError';
     this.doc = doc;
+    boomifyError(this, 502, { code: 'MALFORMED_RESPONSE' });
   }
 }
 
@@ -107,7 +120,7 @@ export class CaseInsensitiveDict {
 export interface Cookie {
   name: string;
   value: string;
-  domain: string; // '' means "any domain" (python cookiejar_from_dict)
+  domain: string; // '' means "any domain"
   path: string;
   expires?: number | null; // unix seconds
   secure?: boolean;
@@ -131,7 +144,7 @@ export class CookieJar {
     this.cookies.push({ name, value: String(value), domain, path, expires: opts.expires ?? null, secure: opts.secure });
   }
 
-  /** Like requests' RequestsCookieJar.get(name, default) */
+  /** Get a cookie value by name, or `def` when missing */
   get(name: string, def?: string): string | undefined {
     this.purgeExpired();
     let found: Cookie | undefined;
@@ -154,7 +167,7 @@ export class CookieJar {
     return out;
   }
 
-  /** alias for python's get_dict() */
+  /** alias of toDict() */
   get_dict(): Record<string, string> {
     return this.getDict();
   }
@@ -315,7 +328,7 @@ export interface Proxies {
   all?: string;
 }
 
-export type Transport = 'requests' | 'curl' | 'utls';
+export type Transport = 'http1' | 'http2' | 'mobile';
 
 export interface RetryConfig {
   total: number;
@@ -332,7 +345,7 @@ const STATUS_REASONS: Record<number, string> = {
   502: 'Bad Gateway', 503: 'Service Unavailable', 504: 'Gateway Timeout',
 };
 
-/** python urlencode(doseq=True) with quote_plus */
+/** URL-encode a form (arrays become repeated keys, spaces become '+') */
 export function urlencode(params: Params): string {
   if (!params) return '';
   if (typeof params === 'string') return params;
@@ -342,13 +355,13 @@ export function urlencode(params: Params): string {
     if (v === undefined || v === null) continue;
     const values = Array.isArray(v) ? v : [v];
     for (const item of values) {
-      out.push(`${qp(k)}=${qp(pyStr(item))}`);
+      out.push(`${qp(k)}=${qp(textValue(item))}`);
     }
   }
   return out.join('&');
 }
 
-function pyStr(v: any): string {
+function textValue(v: any): string {
   if (v === true) return 'True';
   if (v === false) return 'False';
   if (v && typeof v === 'object' && !(v instanceof Date)) return JSON.stringify(v);
@@ -365,7 +378,7 @@ const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'proxy-connection', 'tra
 
 export class Session {
   headers = new CaseInsensitiveDict({
-    'User-Agent': 'python-requests/2.32.3',
+    'User-Agent': 'insta-node-js',
     'Accept-Encoding': 'gzip, deflate',
     Accept: '*/*',
     Connection: 'keep-alive',
@@ -373,10 +386,10 @@ export class Session {
   cookies = new CookieJar();
   proxies: Proxies = {};
   verify: boolean | string = true;
-  transport: Transport = 'requests';
+  transport: Transport = 'http1';
   retry: RetryConfig = { total: 3, statusForcelist: [429, 500, 502, 503, 504], backoffFactor: 2, allowedMethods: ['GET', 'POST'] };
   maxRedirects = 30;
-  /** browser profile name used by public "curl" transport (informational in Node) */
+  /** browser profile name used by the public "http2" transport */
   impersonate?: string;
 
   private dispatchers = new Map<string, Dispatcher>();
@@ -384,7 +397,7 @@ export class Session {
   mount(transport: Transport, retry?: Partial<RetryConfig>): void {
     this.transport = transport;
     if (retry) this.retry = { ...this.retry, ...retry };
-    if (transport !== 'requests') this.retry = { ...this.retry, total: 0 };
+    if (transport !== 'http1') this.retry = { ...this.retry, total: 0 };
     this.closeDispatchers();
   }
 
@@ -407,10 +420,10 @@ export class Session {
         /* ignore unreadable CA path */
       }
     }
-    if (this.transport === 'curl' || this.transport === 'utls') {
+    if (this.transport === 'http2' || this.transport === 'mobile') {
       // Mobile-like ClientHello: TLS 1.3 only with modern groups.
       opts.minVersion = 'TLSv1.3';
-      opts.ecdhCurve = this.transport === 'utls' ? 'X25519' : 'X25519MLKEM768:X25519:P-256:P-384';
+      opts.ecdhCurve = this.transport === 'mobile' ? 'X25519' : 'X25519MLKEM768:X25519:P-256:P-384';
       opts.ALPNProtocols = ['h2'];
     }
     return opts;
@@ -421,7 +434,7 @@ export class Session {
     const key = `${proxyUrl || 'direct'}|${this.transport}|${JSON.stringify({ ...tls, ca: tls.ca ? 'ca' : undefined })}`;
     let d = this.dispatchers.get(key);
     if (d) return d;
-    const allowH2 = this.transport !== 'requests';
+    const allowH2 = this.transport !== 'http1';
     const common = { allowH2, keepAliveTimeout: 30_000, connections: 32 } as any;
     if (proxyUrl) {
       const scheme = proxyUrl.split(':', 1)[0].toLowerCase();
@@ -563,11 +576,11 @@ export class Session {
         if (v && v !== url.host) hostOverride = v;
         continue;
       }
-      if (this.transport !== 'requests' && HOP_BY_HOP.has(lower)) continue;
+      if (this.transport !== 'http1' && HOP_BY_HOP.has(lower)) continue;
       if (lower === 'connection' || lower === 'keep-alive') continue;
       headers[k] = v;
     }
-    if (hostOverride && this.transport === 'requests') headers.host = hostOverride;
+    if (hostOverride && this.transport === 'http1') headers.host = hostOverride;
     const cookieHeader = this.cookies.headerFor(url);
     if (cookieHeader && !req.headers.has('Cookie')) headers.cookie = cookieHeader;
     if (req.body !== null && req.body !== undefined) headers['content-length'] = String(Buffer.byteLength(req.body));
@@ -662,7 +675,7 @@ function mapNetworkError(e: any, req: PreparedRequest, connectTimeout?: number):
   return new ConnectionError(msg, { request: req, cause: e });
 }
 
-/** Module-level helper like `requests.get(url, ...)` */
+/** One-off request helper: `request('GET', url, ...)` */
 const defaultSession = new Session();
 export function get(url: string, opts: RequestOptions = {}): Promise<Response> {
   return defaultSession.get(url, opts);

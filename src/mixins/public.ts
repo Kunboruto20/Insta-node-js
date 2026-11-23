@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { createWriteStream, promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import {
@@ -16,11 +17,11 @@ import {
 import { ConnectionError, HTTPError, JSONDecodeError, Response } from '../http/session';
 import { truncateLogText } from '../utils/logging';
 import { now, randomDelay, sleep } from '../utils/timing';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { ClientBase } from '../base';
 import type { Client } from '../client';
 
-export type PublicTransport = 'requests' | 'curl';
+export type PublicTransport = 'http1' | 'http2';
 export const PUBLIC_WEB_APP_ID = '936619743392459';
 export const PUBLIC_WEB_ASBD_ID = '129477';
 
@@ -45,8 +46,8 @@ export class PublicRequestMixin {
   }
 
   _normalizePublicTransport(this: Client, publicTransport?: PublicTransport | null): PublicTransport {
-    const t = publicTransport || 'requests';
-    if (t !== 'requests' && t !== 'curl') throw new Error("public_transport must be 'requests' or 'curl'");
+    const t = publicTransport || 'http1';
+    if (t !== 'http1' && t !== 'http2') throw Boom.badRequest("publicTransport must be 'http1' or 'http2'");
     return t;
   }
 
@@ -64,12 +65,12 @@ export class PublicRequestMixin {
   }
 
   _configurePublicSessionRetry(this: Client): void {
-    if (this.publicTransport === 'curl') {
+    if (this.publicTransport === 'http2') {
       // Browser-like transport: HTTP/2 + modern TLS, no adapter retries
       this.public.impersonate = this.publicTransportImpersonate;
-      this.public.mount('curl');
+      this.public.mount('http2');
     } else {
-      this.public.mount('requests', this._buildPublicSessionRetryStrategy());
+      this.public.mount('http1', this._buildPublicSessionRetryStrategy());
     }
   }
 
@@ -86,8 +87,8 @@ export class PublicRequestMixin {
   async publicRequest(this: Client, url: string, opts: PublicRequestOptions = {}): Promise<any> {
     const retriesCount = opts.retriesCount ?? this.publicRequestRetriesCount;
     const retriesTimeout = opts.retriesTimeout ?? this.publicRequestRetriesTimeout;
-    pyAssert(retriesCount <= 10, 'Retries count is too high');
-    pyAssert(retriesTimeout <= 600, 'Retries timeout is too high');
+    ensure(retriesCount <= 10, 'Retries count is too high');
+    ensure(retriesTimeout <= 600, 'Retries timeout is too high');
     for (let iteration = 0; iteration < retriesCount; iteration++) {
       try {
         if (this.delayRange) await randomDelay(this.delayRange);
@@ -104,7 +105,7 @@ export class PublicRequestMixin {
         }
         if (e instanceof ClientError) {
           const responseStatus = e.response?.status_code;
-          if (this.publicTransport === 'requests' && this.sessionRetryTotal > 0 && this.sessionRetryStatuses.includes(responseStatus)) {
+          if (this.publicTransport === 'http1' && this.sessionRetryTotal > 0 && this.sessionRetryStatuses.includes(responseStatus)) {
             throw e;
           }
           const msg = String(e.message);
@@ -218,7 +219,7 @@ export class PublicRequestMixin {
   async _downloadResponseToPath(this: Client, response: Response, filePath: string): Promise<string> {
     try {
       await fsp.writeFile(filePath, response.content);
-      // python checks the decoded file size against Content-Length (only meaningful for identity encoding)
+      // check the decoded file size against Content-Length (only meaningful for identity encoding)
       const encoding = (response.headers.get('content-encoding') || '').toLowerCase();
       const stat = await fsp.stat(filePath);
       this._raiseForIncompleteDownload(
@@ -251,7 +252,7 @@ export class PublicRequestMixin {
   ): Promise<any> {
     const { queryHash = null, queryId = null, data = null, headers = null } = opts;
     let params = opts.params ?? null;
-    pyAssert(queryId || queryHash, 'Must provide valid one of: query_id, query_hash');
+    ensure(queryId || queryHash, 'Must provide valid one of: query_id, query_hash');
     const defaultParams: Record<string, any> = { variables: JSON.stringify(variables) };
     if (queryId) defaultParams.query_id = queryId;
     if (queryHash) defaultParams.query_hash = queryHash;
@@ -370,7 +371,7 @@ export class TopSearchesPublicMixin {
 
 export class ProfilePublicMixin {
   async locationFeed(this: Client, locationId: string | number, count = 16, endCursor: string | null = null): Promise<any> {
-    if (count > 50) throw new Error('Count cannot be greater than 50');
+    if (count > 50) throw Boom.badRequest('Count cannot be greater than 50');
     const variables: Record<string, any> = { id: locationId, first: Math.trunc(count) };
     if (endCursor) variables.after = endCursor;
     const data = await this.publicGraphqlRequest(variables, { queryHash: '1b84447a4d8b6d6d0426fefb34514485' });

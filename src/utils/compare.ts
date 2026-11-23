@@ -1,11 +1,11 @@
-/** JSON.stringify with sorted keys (python json.dumps(..., sort_keys=True) for identity purposes) */
+/** JSON.stringify with sorted keys (stable identity key) */
 export function stableStringify(v: any): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v) ?? 'null';
   if (Array.isArray(v)) return '[' + v.map(stableStringify).join(',') + ']';
   return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + stableStringify(v[k])).join(',') + '}';
 }
 
-/** python == for JSON-like values */
+/** Deep equality for JSON-like values */
 export function deepEqual(a: any, b: any): boolean {
   if (a === b) return true;
   if (typeof a === 'number' && typeof b === 'boolean') return a === Number(b);

@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { randomUUID } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
@@ -6,10 +7,10 @@ import * as config from '../config';
 import { ClientError, ClipConfigureError, ClipNotUpload } from '../exceptions';
 import { Location, Media, Track, Usertag } from '../types';
 import { FfmpegUnavailableError, ffmpeg, makeTmpPath, probe } from '../utils/ffmpeg';
-import { dumps, pyFloat, pyJsonDumps } from '../utils/serialization';
+import { dumps, floatValue, jsonDumps } from '../utils/serialization';
 import { dateTimeOriginal, randomInt, sleep } from '../utils/timing';
-import { MOVIEPY_2_INSTALL_MESSAGE, analyzeVideoForUpload } from '../utils/video';
-import { pyAssert } from '../utils/validation';
+import { FFMPEG_INSTALL_MESSAGE, analyzeVideoForUpload } from '../utils/video';
+import { ensure } from '../utils/validation';
 import { pf } from './photo';
 import { MUSIC_PRODUCT } from './track';
 import type { Client } from '../client';
@@ -93,13 +94,13 @@ export class ClipMixin {
 
   /** Fetch Reel remix/reuse availability metadata. */
   async clipMashupInfo(this: Client, mediaPk: string | number): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     return this.privateRequest('clips/get_mashup_info_for_media/', { media_id: String(mediaPk), _uid: String(this.userId), _uuid: this.uuid });
   }
 
   /** Mark Clips/Reels as seen using Instagram's Clips seen-state endpoint. */
   async clipSeen(this: Client, mediaIds: Array<string | number>, blendMediaIds: Array<string | number> | null = null): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const mediaPks = mediaIds.map((m) => this.mediaPk(m));
     const blendMediaPks = (blendMediaIds || []).map((m) => this.mediaPk(m));
     const result = await this.privateRequest('clips/write_seen_state/', {
@@ -165,7 +166,7 @@ export class UploadClipMixin {
   /** Get Reel creation preflight configuration for the current user. */
   async clipInfoForCreation(this: Client, deviceStatus: Record<string, any> | null = null): Promise<any> {
     deviceStatus = deviceStatus || this._defaultVideoDeviceStatus();
-    return this.privateRequest('clips/clips_info_for_creation/', null, { params: { device_status: pyJsonDumps(deviceStatus) } });
+    return this.privateRequest('clips/clips_info_for_creation/', null, { params: { device_status: jsonDumps(deviceStatus) } });
   }
 
   /** Get Reel topic catalog items accepted by clipUpload(..., {topics}). */
@@ -184,7 +185,7 @@ export class UploadClipMixin {
   /** Get Reel Facebook sharing configuration for the current user. */
   async clipShareToFbConfig(this: Client, deviceStatus: Record<string, any> | null = null): Promise<any> {
     deviceStatus = deviceStatus || this._defaultVideoDeviceStatus();
-    return this.privateRequest('clips/user/share_to_fb_config/', null, { params: { device_status: pyJsonDumps(deviceStatus) } });
+    return this.privateRequest('clips/user/share_to_fb_config/', null, { params: { device_status: jsonDumps(deviceStatus) } });
   }
 
   /** Get the Android cross-posting unified config used by the Reel composer. */
@@ -512,7 +513,7 @@ export class UploadClipMixin {
       },
       preview_spec: { spec_version: 1, video_dur_ms: Number(durationMs), audio_dur_ms: Number(durationMs) },
     };
-    const uploadSettingsData = pyJsonDumps(uploadSettings);
+    const uploadSettingsData = jsonDumps(uploadSettings);
     const uploadSettingsLen = String(Buffer.byteLength(uploadSettingsData, 'utf8'));
     let headers: Record<string, string> = this.privateHeaders({
       'Accept-Encoding': 'gzip',
@@ -528,7 +529,7 @@ export class UploadClipMixin {
     this.requestLog(response);
     if (response.status_code !== 200) this._raiseClipUploadError(response, 'upload_settings');
     const ruploadParams = {
-      provenance_metadata: pyJsonDumps({ origin: ['EXTERNAL'] }),
+      provenance_metadata: jsonDumps({ origin: ['EXTERNAL'] }),
       upload_media_height: String(height),
       share_type: 'reels',
       debug_segment_id: '0',
@@ -548,7 +549,7 @@ export class UploadClipMixin {
     };
     headers = this.privateHeaders({
       'Accept-Encoding': 'gzip',
-      'X-Instagram-Rupload-Params': pyJsonDumps(ruploadParams),
+      'X-Instagram-Rupload-Params': jsonDumps(ruploadParams),
       X_FB_VIDEO_WATERFALL_ID: `${composerSessionId}_${assetId}_Mixed_0`,
       'X-Entity-Type': 'video/mp4',
       'Segment-Start-Offset': '0',
@@ -603,7 +604,7 @@ export class UploadClipMixin {
           audioDuration = null;
         }
       } catch (e) {
-        if (e instanceof FfmpegUnavailableError) throw new Error(`clipUploadAsReelWithMusic() requires ffmpeg. ${MOVIEPY_2_INSTALL_MESSAGE}`);
+        if (e instanceof FfmpegUnavailableError) throw Boom.failedDependency(`clipUploadAsReelWithMusic() requires ffmpeg. ${FFMPEG_INSTALL_MESSAGE}`);
         throw e;
       }
       // set the start time of the audio and create the actual media
@@ -641,16 +642,16 @@ export class UploadClipMixin {
   ): Record<string, any> {
     const audioAssetId = this._trackValue(track, 'audio_asset_id') || this._trackValue(track, 'id');
     const audioClusterId = this._trackValue(track, 'audio_cluster_id');
-    pyAssert(audioAssetId, 'track.audio_asset_id or track.id is required');
-    pyAssert(audioClusterId, 'track.audio_cluster_id is required');
+    ensure(audioAssetId, 'track.audio_asset_id or track.id is required');
+    ensure(audioClusterId, 'track.audio_cluster_id is required');
     if (audioAssetStartTime === null || audioAssetStartTime === undefined) audioAssetStartTime = this._trackHighlightStart(track);
     const artistName = this._trackValue(track, 'display_artist') || '';
     const trackName = this._trackValue(track, 'title') || '';
     const data: Record<string, any> = { ...(extraData || {}) };
     data.clips_audio_metadata = {
-      original: { volume_level: pyFloat(originalVolume) },
+      original: { volume_level: floatValue(originalVolume) },
       song: {
-        volume_level: pyFloat(musicVolume),
+        volume_level: floatValue(musicVolume),
         is_saved: '0',
         artist_name: artistName,
         audio_asset_id: audioAssetId,
@@ -732,7 +733,7 @@ export class UploadClipMixin {
       source_type: '4',
       // "title": title,
       caption,
-      usertags: pyJsonDumps({ in: tags }),
+      usertags: jsonDumps({ in: tags }),
       clips_share_preview_to_feed: feedShow,
       upload_id: uploadId,
       // "igtv_composer_session_id": self.igtv_composer_session_id,
@@ -759,9 +760,9 @@ export class UploadClipMixin {
           },
         ],
       },
-      clips_audio_metadata: { original: { volume_level: pyFloat(1) } },
+      clips_audio_metadata: { original: { volume_level: floatValue(1) } },
       additional_audio_info: { has_voiceover_attribution: 0 },
-      edits: { filter_type: 0, filter_strength: pyFloat(1) },
+      edits: { filter_type: 0, filter_strength: floatValue(1) },
       capture_type: 'clips_v2',
       clips_creation_entry_point: 'clips',
       camera_entry_point: '71',

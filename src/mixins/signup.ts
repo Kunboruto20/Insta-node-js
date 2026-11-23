@@ -13,7 +13,7 @@ import {
 import { extractUserShort } from '../extractors';
 import { UserShort } from '../types';
 import { rawDecode } from '../utils/json';
-import { dumps, pyRepr } from '../utils/serialization';
+import { dumps, reprValue } from '../utils/serialization';
 import { randomInt, sleep } from '../utils/timing';
 import { ChallengeChoice } from './challenge';
 import type { Client } from '../client';
@@ -625,7 +625,7 @@ export class SignUpMixin {
       throw new ClientError('CAA signup did not return created_user');
     }
     if (registrationResponse.account_created === false) {
-      throw new ClientError(`CAA signup did not create an account: ${pyRepr(registrationResponse)}`);
+      throw new ClientError(`CAA signup did not create an account: ${reprValue(registrationResponse)}`);
     }
     return extractUserShort(registrationResponse.created_user);
   }
@@ -648,19 +648,19 @@ export class SignUpMixin {
       signupWarned = true;
     }
     await this.getSignupConfig();
-    const kwargs: Record<string, any> = { username, password, full_name: fullName, year, month, day };
+    const extraArgs: Record<string, any> = { username, password, full_name: fullName, year, month, day };
     if (email) {
       const check = await this.checkEmail(email);
-      if (!check.valid) throw new EmailInvalidError(`Email not valid: ${check.error_title ?? pyRepr(check)}`);
-      if (!check.available) throw new EmailNotAvailableError(`Email not available: ${check.feedback_message ?? pyRepr(check)}`);
+      if (!check.valid) throw new EmailInvalidError(`Email not valid: ${check.error_title ?? reprValue(check)}`);
+      if (!check.available) throw new EmailNotAvailableError(`Email not available: ${check.feedback_message ?? reprValue(check)}`);
       const sent = await this.sendVerifyEmail(email);
-      if (!sent.email_sent) throw new EmailVerificationSendError(`Failed to send verification email: ${pyRepr(sent)}`);
+      if (!sent.email_sent) throw new EmailVerificationSendError(`Failed to send verification email: ${reprValue(sent)}`);
       // Date of Birth (DOB) Age Eligibility Check
       if (year && month && day) {
         const ageCheckResult = await this.checkAgeEligibility(year, month, day);
         // IG returns "eligible_to_register"; keep "eligible" as a fallback
         const eligible = 'eligible_to_register' in ageCheckResult ? ageCheckResult.eligible_to_register : ageCheckResult.eligible;
-        if (!eligible) throw new AgeEligibilityError(`Account not eligible based on age criteria: ${pyRepr(ageCheckResult)}`);
+        if (!eligible) throw new AgeEligibilityError(`Account not eligible based on age criteria: ${reprValue(ageCheckResult)}`);
       }
       // send code confirmation
       let code: string | null | undefined = '';
@@ -672,15 +672,15 @@ export class SignUpMixin {
       }
       console.log(`Enter code "${code}" for ${username} (${Math.min(attempt, 10)} attempts, by ${this.waitSeconds} seconds)`);
       const signupCode = (await this.checkConfirmationCode(email, code || '')).signup_code;
-      kwargs.email = email;
-      kwargs.signup_code = signupCode;
+      extraArgs.email = email;
+      extraArgs.signup_code = signupCode;
     }
     if (phoneNumber && !email) {
-      kwargs.phone_number = phoneNumber;
+      extraArgs.phone_number = phoneNumber;
       const check = await this.checkPhoneNumber(phoneNumber);
-      if (check.status !== 'ok' && !check.valid) throw new ClientError(`Phone number not valid (${pyRepr(check)})`);
+      if (check.status !== 'ok' && !check.valid) throw new ClientError(`Phone number not valid (${reprValue(check)})`);
       const sms = await this.sendSignupSmsCode(phoneNumber);
-      if (sms.status !== 'ok') throw new ClientError(`Error when verify phone number (${pyRepr(sms)})`);
+      if (sms.status !== 'ok') throw new ClientError(`Error when verify phone number (${reprValue(sms)})`);
       let attempt = 1;
       let code: string | null | undefined;
       if ('verification_code' in sms) code = sms.verification_code;
@@ -693,14 +693,14 @@ export class SignUpMixin {
         }
       }
       console.log(`Enter code "${code}" for ${username} (${Math.min(attempt, 10)} attempts, by ${this.waitSeconds} seconds)`);
-      kwargs.phone_code = code;
+      extraArgs.phone_code = code;
     }
     let retries = 0;
     let data: any;
     while (retries < 3) {
-      data = await this.accountsCreate(kwargs);
+      data = await this.accountsCreate(extraArgs);
       if (data.message !== 'challenge_required') break;
-      if (await this.challengeFlow(data.challenge, phoneNumber, username)) Object.assign(kwargs, { suggestedUsername: '', sn_result: 'MLA' });
+      if (await this.challengeFlow(data.challenge, phoneNumber, username)) Object.assign(extraArgs, { suggestedUsername: '', sn_result: 'MLA' });
       retries += 1;
     }
     return extractUserShort(data.created_user);
@@ -785,7 +785,7 @@ export class SignUpMixin {
       year = null,
       month = null,
       day = null,
-      ...kwargs
+      ...extraArgs
     } = opts;
     if (!(email || phoneNumber)) throw new ClientError('Use email or phone_number for signup');
     const data: Record<string, any> = {
@@ -807,7 +807,7 @@ export class SignUpMixin {
       _uuid: this.uuid,
       waterfall_id: this.waterfallId,
       one_tap_opt_in: 'true',
-      ...kwargs,
+      ...extraArgs,
     };
     let endpoint: string;
     let domain: string | null;
@@ -871,9 +871,9 @@ export class SignUpMixin {
         data = await this.challengeVerifySmsCaptcha(data, securityCode);
         continue;
       }
-      throw new ClientError(`Unsupported signup challenge step: ${pyRepr(data)}`);
+      throw new ClientError(`Unsupported signup challenge step: ${reprValue(data)}`);
     }
-    throw new ClientError(`Signup challenge flow did not complete: ${pyRepr(data)}`);
+    throw new ClientError(`Signup challenge flow did not complete: ${reprValue(data)}`);
   }
 
   async challengeApi(this: Client, data: any): Promise<any> {

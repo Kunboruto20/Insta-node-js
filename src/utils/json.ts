@@ -1,8 +1,9 @@
+import * as Boom from '@hapi/boom';
+
 /**
  * JSON.parse that keeps integers outside Number's safe range as strings.
  *
- * Python's json module parses arbitrarily large integers exactly; JavaScript's JSON.parse
- * silently rounds them (e.g. media ids like 3123456789012345678). This pre-pass quotes such
+ * JavaScript's JSON.parse silently rounds integers above Number.MAX_SAFE_INTEGER (e.g. media ids like 3123456789012345678). This pre-pass quotes such
  * integer literals (outside of strings) before parsing.
  */
 export function parseJson(text: string): any {
@@ -55,12 +56,12 @@ export function quoteBigInts(text: string): string {
 }
 
 /**
- * json.JSONDecoder().raw_decode for values starting at `s[0]` (strings, numbers, literals, objects, arrays).
- * Returns [value, consumedLength] or throws SyntaxError.
+ * Decode the JSON value starting at `s[0]` (strings, numbers, literals, objects, arrays) and ignore the rest.
+ * Returns [value, consumedLength] or throws a Boom 422 error.
  */
 export function rawDecode(s: string): [any, number] {
   const end = scanJsonValue(s, 0);
-  if (end < 0) throw new SyntaxError('Expecting value');
+  if (end < 0) throw Boom.badData('Invalid JSON value');
   return [JSON.parse(s.slice(0, end)), end];
 }
 

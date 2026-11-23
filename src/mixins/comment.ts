@@ -3,7 +3,7 @@ import { extractComment } from '../extractors';
 import { Comment } from '../types';
 import { generateJazoest } from '../utils/auth';
 import { dumps } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { GQL_STUFF } from './graphql';
 import type { Client } from '../client';
 
@@ -182,7 +182,7 @@ export class CommentMixin {
       if (result.comments && result.comments.length) for (const c of result.comments) comments.push(extractComment(c));
     };
     let params: Record<string, any> | null = null;
-    // NOTE: python passes `params` positionally as the request body
+    // NOTE: `params` is sent as the request body
     let result = await this.privateRequest(`media/${id}/comments/`, params);
     getComments(result);
     while ((result.has_more_comments && result.next_max_id) || (result.has_more_headload_comments && result.next_min_id)) {
@@ -270,7 +270,7 @@ export class CommentMixin {
 
   /** Post a comment on a media (optionally as reply to repliedToCommentId) */
   async mediaComment(this: Client, mediaId: string | number, text: string, repliedToCommentId: string | number | null = null): Promise<Comment> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = await this.mediaId(mediaId);
     const idempotenceToken = this.generateUuid();
     const data: Record<string, any> = {
@@ -302,7 +302,7 @@ export class CommentMixin {
 
   /** Checks if a comment text is offensive */
   async mediaCheckOffensiveComment(this: Client, mediaId: string | number, text: string): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = await this.mediaId(mediaId);
     const data = {
       // _uid, comment_session_id are not in this body?
@@ -315,13 +315,13 @@ export class CommentMixin {
 
   /** Lighter-weight variant of mediaCheckOffensiveComment — returns the full IG payload. */
   async mediaCheckOffensiveCommentV2(this: Client, mediaId: string, comment: string): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     return this.privateRequest('media/comment/check_offensive_comment/', { comment_text: comment, media_id: mediaId, _uuid: this.uuid });
   }
 
   /** Like a comment on a media (revert=true to unlike) */
   async commentLike(this: Client, commentPk: string | number, revert = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const pk = BigInt(String(commentPk)).toString();
     const data = {
       is_carousel_bumped_post: 'false',

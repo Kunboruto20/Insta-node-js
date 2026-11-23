@@ -1,9 +1,10 @@
+import * as Boom from '@hapi/boom';
 import { LocationNotFound, WrongCursorError } from '../exceptions';
 import { extractGuideV1, extractLocation, extractMediaV1 } from '../extractors';
 import { Guide, Location, Media } from '../types';
 import { parseJson } from '../utils/json';
-import { pyInt, pyJsonDumps } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { intValue, jsonDumps } from '../utils/serialization';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const tabKeysV1 = ['ranked', 'recent'] as const;
@@ -62,7 +63,7 @@ export class LocationMixin {
 
   /** Smart complete of location (fills lat/lng/external ids) */
   async locationComplete(this: Client, location: Location): Promise<Location> {
-    pyAssert(location && typeof location === 'object' && 'name' in location, `Location is wrong "${location}" (${typeof location})`);
+    ensure(location && typeof location === 'object' && 'name' in location, `Location is wrong "${location}" (${typeof location})`);
     if (location.pk && !location.lat) {
       // search lat and lng
       const info = await this.locationInfo(location.pk);
@@ -102,9 +103,9 @@ export class LocationMixin {
       lat: location.lat,
       lng: location.lng,
       external_source: location.external_id_source,
-      facebook_places_id: location.external_id === null || location.external_id === undefined ? null : pyInt(location.external_id),
+      facebook_places_id: location.external_id === null || location.external_id === undefined ? null : intValue(location.external_id),
     };
-    return pyJsonDumps(data, true);
+    return jsonDumps(data, true);
   }
 
   /** Build location id for story sticker tap models. */
@@ -145,13 +146,13 @@ export class LocationMixin {
     maxId: string | null = null,
   ): Promise<[Media[], string | null]> {
     void maxAmount;
-    pyAssert((tabKeysV1 as readonly string[]).includes(tabKey), `You must specify one of the options for "tab_key" ${tabKeysV1}`);
+    ensure((tabKeysV1 as readonly string[]).includes(tabKey), `You must specify one of the options for "tab_key" ${tabKeysV1}`);
     const data: Record<string, any> = { _uuid: this.uuid, session_id: this.clientSessionId, tab: tabKey };
     if (maxId) {
       let decoded: any;
       try {
         decoded = parseJson(Buffer.from(maxId, 'base64').toString('utf8'));
-        if (!Array.isArray(decoded) || decoded.length !== 3) throw new Error('bad cursor');
+        if (!Array.isArray(decoded) || decoded.length !== 3) throw Boom.badRequest('Invalid cursor');
       } catch {
         throw new WrongCursorError();
       }
@@ -164,7 +165,7 @@ export class LocationMixin {
     const result = await this.privateRequest(`locations/${locationPk}/sections/`, data);
     let nextMaxId: string | null = null;
     if (result.next_page && result.next_max_id) {
-      nextMaxId = Buffer.from(pyJsonDumps([result.next_max_id, result.next_page, result.next_media_ids ?? null])).toString('base64');
+      nextMaxId = Buffer.from(jsonDumps([result.next_max_id, result.next_page, result.next_media_ids ?? null])).toString('base64');
     }
     for (const section of result.sections || []) {
       const layoutContent = section.layout_content || {};
@@ -175,7 +176,7 @@ export class LocationMixin {
 
   /** Get medias for a location by Private Mobile API */
   async locationMediasV1(this: Client, locationPk: string | number, amount = 63, tabKey: LocationTab = 'ranked'): Promise<Media[]> {
-    pyAssert((tabKeysV1 as readonly string[]).includes(tabKey), `You must specify one of the options for "tab_key" ${tabKeysV1}`);
+    ensure((tabKeysV1 as readonly string[]).includes(tabKey), `You must specify one of the options for "tab_key" ${tabKeysV1}`);
     let medias: Media[] = [];
     let maxId: string | null = null;
     while (true) {

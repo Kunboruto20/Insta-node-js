@@ -1,7 +1,7 @@
-/* Data models (port of instagrapi.types, pydantic models).
+/* Data models.
  *
  * Each model has a TypeScript interface and a runtime schema used by `parseModel`,
- * which reproduces pydantic's lax-mode coercion: numbers → strings for `str` fields,
+ * which applies lax coercion: numbers → strings for `str` fields,
  * numeric strings → numbers, unix timestamps / ISO strings → Date, URL validation,
  * required fields and defaults. Integer identifiers are kept as strings because they
  * can exceed Number.MAX_SAFE_INTEGER.

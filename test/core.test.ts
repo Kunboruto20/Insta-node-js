@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as ig from '../src';
 
-test('client exposes the full instagrapi surface', () => {
+test('client exposes the full API surface', () => {
   const cl = new ig.Client();
   for (const name of [
     'login', 'relogin', 'loginBySessionid', 'getSettings', 'setSettings', 'dumpSettings', 'loadSettings',
@@ -37,7 +37,7 @@ test('settings roundtrip via dump/load', async () => {
   assert.equal(cl2.userAgent, cl.userAgent);
 });
 
-test('exception hierarchy mirrors instagrapi', () => {
+test('exception hierarchy', () => {
   const e = new ig.LoginRequired('login required');
   assert.ok(e instanceof ig.ClientError);
   assert.ok(e instanceof Error);
@@ -51,7 +51,7 @@ test('bigint-safe json parsing keeps ids exact', () => {
   assert.equal(data.n, 1);
 });
 
-test('DirectThread.isSeen mirrors python', () => {
+test('DirectThread.isSeen', () => {
   const t = ig.makeDirectThread({
     pk: '1', id: '1', messages: [], users: [], inviter: null, left_users: [], admin_user_ids: [],
     last_activity_at: 1700000000, muted: false, named: false, canonical: true, pending: false,

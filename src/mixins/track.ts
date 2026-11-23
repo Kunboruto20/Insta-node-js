@@ -5,7 +5,7 @@ import { extractTrack } from '../extractors';
 import { get as httpGet } from '../http/session';
 import { Track } from '../types';
 import { jsonValue } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export type MUSIC_PRODUCT = 'feed_post' | 'music_in_feed' | 'story_camera_clips_v2';
@@ -25,7 +25,7 @@ export class TrackMixin {
     url = String(url);
     const p = new URL(url).pathname;
     const fname = p.slice(p.lastIndexOf('/') + 1).trim();
-    pyAssert(fname, 'The URL must contain the path to the file (m4a or mp3).');
+    ensure(fname, 'The URL must contain the path to the file (m4a or mp3).');
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
     const response = await httpGet(url, { timeout: this.readTimeout });
@@ -152,12 +152,12 @@ export class TrackMixin {
   ): Promise<Record<string, any>> {
     const audioAssetId = this._trackValue(track, 'audio_asset_id') || this._trackValue(track, 'id');
     const audioClusterId = this._trackValue(track, 'audio_cluster_id');
-    pyAssert(audioAssetId, 'track.audio_asset_id or track.id is required');
-    pyAssert(audioClusterId, 'track.audio_cluster_id is required');
+    ensure(audioAssetId, 'track.audio_asset_id or track.id is required');
+    ensure(audioClusterId, 'track.audio_cluster_id is required');
     if (audioAssetStartTime === null || audioAssetStartTime === undefined) audioAssetStartTime = this._trackHighlightStart(track);
     if (alacornSessionId === null || alacornSessionId === undefined) alacornSessionId = this._trackValue(track, 'alacorn_session_id');
     if (alacornSessionId === null || alacornSessionId === undefined) alacornSessionId = (await this.musicInFeedAudioBrowser()).alacorn_session_id;
-    pyAssert(alacornSessionId, 'alacorn_session_id is required');
+    ensure(alacornSessionId, 'alacorn_session_id is required');
     const data: Record<string, any> = {
       audio_asset_id: audioAssetId,
       audio_cluster_id: audioClusterId,

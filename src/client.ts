@@ -41,7 +41,7 @@ import { RealtimeMixin } from './mixins/realtime';
 import { CaptchaHandlerMixin } from './mixins/captcha';
 
 /**
- * Instagram Private API client (port of instagrapi.Client).
+ * Instagram Private API client.
  *
  * All mixin methods are installed on the prototype; the interface merge below gives
  * full typing (`client.userInfo(...)`, `client.directSend(...)`, ...).
@@ -155,7 +155,7 @@ export const MIXINS = [
   CaptchaHandlerMixin,
 ];
 
-// Python MRO: the first mixin defining a name wins, so install in reverse order.
+// The first mixin in MIXINS that defines a name wins, so install in reverse order.
 for (const mixin of [...MIXINS].reverse()) {
   for (const name of Object.getOwnPropertyNames(mixin.prototype)) {
     if (name === 'constructor') continue;

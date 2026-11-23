@@ -1,13 +1,14 @@
+import * as Boom from '@hapi/boom';
 import { existsSync } from 'node:fs';
 import sharp from 'sharp';
 import { StoryBuild, StoryMention, StorySticker, makeStoryBuild, makeStorySticker } from './types';
 import { FfmpegUnavailableError, ffmpeg, makeTmpPath, probe } from './utils/ffmpeg';
-import { MOVIEPY_2_FFMPEG_MESSAGE } from './utils/video';
-import { pyAssert } from './utils/validation';
+import { FFMPEG_HINT_MESSAGE } from './utils/video';
+import { ensure } from './utils/validation';
 
-export const STORY_BUILDER_VIDEO_EXTRA_MESSAGE = `StoryBuilder requires ffmpeg. ${MOVIEPY_2_FFMPEG_MESSAGE}`;
+export const STORY_BUILDER_VIDEO_EXTRA_MESSAGE = `StoryBuilder requires ffmpeg. ${FFMPEG_HINT_MESSAGE}`;
 
-/** A media "clip" (equivalent of MoviePy VideoFileClip / ImageClip) */
+/** A media "clip" (video file or still image) */
 export interface StoryClip {
   kind: 'video' | 'image';
   path: string;
@@ -20,7 +21,7 @@ function xmlEscape(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Render a text label (MoviePy TextClip(method="label")) into a PNG, returns [path, [w, h]] */
+/** Render a text label into a PNG, returns [path, [w, h]] */
 async function renderText(
   text: string,
   font: string,
@@ -84,7 +85,7 @@ export class StoryBuilder {
     let inputIndex = 0;
     // Background
     if (this.bgpath) {
-      pyAssert(existsSync(this.bgpath), `Wrong path to background ${this.bgpath}`);
+      ensure(existsSync(this.bgpath), `Wrong path to background ${this.bgpath}`);
       inputs.push('-loop', '1', '-i', this.bgpath);
       overlays.push({ idx: inputIndex++, x: 0, y: 0 });
     }
@@ -232,7 +233,7 @@ async function probeOrThrow(file: string) {
   try {
     return await probe(file);
   } catch (e) {
-    if (e instanceof FfmpegUnavailableError) throw new Error(STORY_BUILDER_VIDEO_EXTRA_MESSAGE);
+    if (e instanceof FfmpegUnavailableError) throw Boom.failedDependency(STORY_BUILDER_VIDEO_EXTRA_MESSAGE);
     throw e;
   }
 }
@@ -241,7 +242,7 @@ async function runFfmpeg(args: string[]) {
   try {
     await ffmpeg(args);
   } catch (e) {
-    if (e instanceof FfmpegUnavailableError) throw new Error(STORY_BUILDER_VIDEO_EXTRA_MESSAGE);
+    if (e instanceof FfmpegUnavailableError) throw Boom.failedDependency(STORY_BUILDER_VIDEO_EXTRA_MESSAGE);
     throw e;
   }
 }

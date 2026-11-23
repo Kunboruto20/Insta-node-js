@@ -1,7 +1,7 @@
 import { ClientError, MediaError, UserError } from '../exceptions';
 import { jsonValue } from '../utils/serialization';
 import { sleep } from '../utils/timing';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const POST_TYPES = ['ALL', 'CAROUSEL_V2', 'IMAGE', 'SHOPPING', 'VIDEO'] as const;
@@ -35,10 +35,10 @@ export class InsightsMixin {
     count = 0,
     sleepSec = 2,
   ): Promise<any[]> {
-    pyAssert((POST_TYPES as readonly string[]).includes(postType), `Unsupported post_type="${postType}" ${POST_TYPES}`);
-    pyAssert((TIME_FRAMES as readonly string[]).includes(timeFrame), `Unsupported time_frame="${timeFrame}" ${TIME_FRAMES}`);
-    pyAssert((DATA_ORDERS as readonly string[]).includes(dataOrdering), `Unsupported data_ordering="${dataOrdering}" ${DATA_ORDERS}`);
-    pyAssert(this.userId, 'Login required');
+    ensure((POST_TYPES as readonly string[]).includes(postType), `Unsupported post_type="${postType}" ${POST_TYPES}`);
+    ensure((TIME_FRAMES as readonly string[]).includes(timeFrame), `Unsupported time_frame="${timeFrame}" ${TIME_FRAMES}`);
+    ensure((DATA_ORDERS as readonly string[]).includes(dataOrdering), `Unsupported data_ordering="${dataOrdering}" ${DATA_ORDERS}`);
+    ensure(this.userId, 'Login required');
     let medias: any[] = [];
     let cursor: string | null = null;
     const data = { surface: 'post_grid', doc_id: 2345520318892697, locale: 'en_US', vc_policy: 'insights_policy', strip_nulls: false, strip_defaults: false };
@@ -72,7 +72,7 @@ export class InsightsMixin {
 
   /** Get insights for account */
   async insightsAccount(this: Client): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const data = { surface: 'account', doc_id: 2449243051851783, locale: 'en_US', vc_policy: 'insights_policy', strip_nulls: false, strip_defaults: false };
     const queryParams = {
       IgInsightsGridMediaImage_SIZE: 360,
@@ -89,7 +89,7 @@ export class InsightsMixin {
 
   /** Get insights data for media */
   async insightsMedia(this: Client, mediaPk: string | number): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const pk = this.mediaPk(mediaPk);
     const data = { surface: 'post', doc_id: 3221905377882880, locale: 'en_US', vc_policy: 'insights_policy', strip_nulls: false, strip_defaults: false };
     const queryParams = { query_params: { access_token: EMPTY_GRAPHQL_QUERY_PARAM, id: pk } };

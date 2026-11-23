@@ -1,7 +1,7 @@
 /**
- * Shared client state and constructor (port of Client.__init__ and the
- * __init__ chain of the mixins in instagrapi's MRO).
+ * Shared client state and constructor (initializes the state used by every mixin).
  */
+import * as Boom from '@hapi/boom';
 import * as config from './config';
 import { Session, Proxies, Response } from './http/session';
 import { getLogger, Logger } from './utils/logging';
@@ -13,7 +13,7 @@ export type ChangePasswordHandler = (username: string) => string | Promise<strin
 export type HandleException = (client: Client, error: unknown) => void | Promise<void>;
 
 export interface ClientOptions {
-  /** saved settings (same JSON format as instagrapi dump_settings) */
+  /** saved settings (the JSON object produced by getSettings()/dumpSettings()) */
   settings?: Record<string, any> | null;
   /** e.g. "http://user:pass@host:port" or "socks5://host:port" */
   proxy?: string | null;
@@ -31,19 +31,18 @@ export interface ClientOptions {
   timezoneOffset?: number;
   timezoneName?: string;
   pushDisabled?: boolean;
-  publicTransport?: 'requests' | 'curl';
+  publicTransport?: 'http1' | 'http2';
   publicTransportImpersonate?: string;
   publicUserAgent?: string;
   publicGraphqlUserAgent?: string | null;
   publicAcceptLanguage?: string;
   withChallengeFlow?: boolean;
-  privateTransport?: 'requests' | 'curl' | 'utls';
-  utlsLibraryPath?: string | null;
+  privateTransport?: 'http1' | 'http2' | 'mobile';
   email?: string | null;
   phoneNumber?: string | null;
 }
 
-export const PUBLIC_CURL_USER_AGENTS: Record<string, string> = {
+export const PUBLIC_HTTP2_USER_AGENTS: Record<string, string> = {
   chrome136: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
 };
 export const DEFAULT_PUBLIC_USER_AGENT =
@@ -91,7 +90,7 @@ export class ClientBase {
   lastPublicJson: any = {};
   publicRequestLogger: Logger = getLogger('public_request');
   lastResponseTs = 0;
-  publicTransport: 'requests' | 'curl' = 'requests';
+  publicTransport: 'http1' | 'http2' = 'http1';
   publicTransportImpersonate = 'chrome136';
   publicUserAgent: string = DEFAULT_PUBLIC_USER_AGENT;
   publicGraphqlUserAgent: string | null = DEFAULT_PUBLIC_GRAPHQL_USER_AGENT;
@@ -106,9 +105,8 @@ export class ClientBase {
   challengeCodeHandler!: ChallengeCodeHandler;
   changePasswordHandler!: ChangePasswordHandler;
   privateRequestLogger: Logger = getLogger('private_request');
-  privateTransport: 'requests' | 'curl' | 'utls' = 'curl';
+  privateTransport: 'http1' | 'http2' | 'mobile' = 'http2';
   _privateAdapterTransport: string | null = null;
-  utlsLibraryPath: string | null = null;
   domain = config.API_DOMAIN;
   lastResponse: Response | null = null;
   lastJson: any = {};
@@ -185,7 +183,7 @@ export class ClientBase {
 
   constructor(options: ClientOptions = {}) {
     const self = this as unknown as Client;
-    // ---- Client.__init__ (before super)
+    // ---- client state
     this.tlsVerify = options.tlsVerify ?? true;
     this.requestTimeout = options.requestTimeout ?? 1;
     this.publicRequestRetriesCount = options.publicRequestRetriesCount ?? 3;
@@ -196,9 +194,9 @@ export class ClientBase {
     this.timezoneOffset = options.timezoneOffset ?? -14400;
     this.timezoneName = options.timezoneName ?? '';
     this.pushDisabled = options.pushDisabled ?? true;
-    this.logger = options.logger ?? getLogger('instagrapi');
+    this.logger = options.logger ?? getLogger('insta-node-js');
 
-    // ---- PublicRequestMixin.__init__
+    // ---- public (web) request state
     this.public = new Session();
     this.public.verify = this.tlsVerify;
     this.publicTransport = self._normalizePublicTransport(options.publicTransport ?? this.publicTransport);
@@ -217,20 +215,19 @@ export class ClientBase {
     });
     self._configurePublicSessionRetry();
 
-    // ---- PrivateRequestMixin.__init__
+    // ---- private (mobile API) request state
     this.withChallengeFlow = options.withChallengeFlow ?? this.withChallengeFlow;
     this._pigeonSessionId = self.generateUuid('UFS-', '-1');
     this.private = new Session();
     this.private.verify = this.tlsVerify;
     this.privateTransport = self._normalizePrivateTransport(options.privateTransport ?? this.privateTransport);
-    this.utlsLibraryPath = options.utlsLibraryPath ?? null;
     this.email = options.email ?? null;
     this.phoneNumber = options.phoneNumber ?? null;
     self._configurePrivateSessionRetry();
     this.challengeCodeHandler = (username, choice) => self.manualInputCode(username, choice);
     this.changePasswordHandler = (username) => self.manualChangePassword(username);
 
-    // ---- PrivateGraphQLRequestMixin.__init__
+    // ---- private GraphQL request state
     this.graphql = new Session();
     this.graphql.verify = this.tlsVerify;
     this.graphql.headers.update({
@@ -245,11 +242,11 @@ export class ClientBase {
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
     });
 
-    // ---- LoginMixin.__init__
+    // ---- login state
     this.bloksVersioningId = config.APP_SETTINGS[config.DEFAULT_APP_VERSION].bloks_versioning_id;
     this.userAgent = null;
 
-    // ---- Client.__init__ (after super)
+    // ---- options
     this.settings = deepcopy(options.settings || {});
     this.overrideAppVersion = options.overrideAppVersion ?? false;
     this.delayRange = options.delayRange ?? null;
@@ -258,13 +255,13 @@ export class ClientBase {
   }
 
   static _defaultPublicUserAgent(publicTransport: string, impersonate: string): string {
-    if (publicTransport === 'curl') return PUBLIC_CURL_USER_AGENTS[impersonate] ?? PUBLIC_CURL_USER_AGENTS.chrome136;
+    if (publicTransport === 'http2') return PUBLIC_HTTP2_USER_AGENTS[impersonate] ?? PUBLIC_HTTP2_USER_AGENTS.chrome136;
     return DEFAULT_PUBLIC_USER_AGENT;
   }
 
   setProxy(dsn: string | null | undefined): boolean {
     if (dsn) {
-      if (typeof dsn !== 'string') throw new Error(`Proxy must been string (URL), but now "${dsn}" (${typeof dsn})`);
+      if (typeof dsn !== 'string') throw Boom.badRequest(`Proxy must be a string (URL), got "${dsn}" (${typeof dsn})`);
       this.proxy = dsn;
       const proxyHref = /^[a-z][a-z0-9+.-]*:\/\//i.test(dsn) ? dsn : `http://${dsn}`;
       const proxies: Proxies = { http: proxyHref, https: proxyHref };

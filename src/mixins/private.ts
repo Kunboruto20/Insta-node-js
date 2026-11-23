@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { createInterface } from 'node:readline/promises';
 import * as config from '../config';
 import {
@@ -86,10 +87,10 @@ function withoutMessage(obj: any): Record<string, any> {
 }
 
 async function askLine(prompt: string): Promise<string> {
-  if (!process.stdin.readable) throw new Error('EOF');
+  if (!process.stdin.readable) throw Boom.preconditionFailed('Standard input is not readable (set challengeCodeHandler)');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const closed = new Promise<never>((_, reject) => rl.once('close', () => reject(new Error('EOF'))));
+    const closed = new Promise<never>((_, reject) => rl.once('close', () => reject(Boom.preconditionFailed('Standard input was closed (set challengeCodeHandler)'))));
     return await Promise.race([rl.question(prompt), closed]);
   } finally {
     rl.close();
@@ -151,16 +152,16 @@ export class PrivateRequestMixin {
     };
   }
 
-  _normalizePrivateTransport(this: Client, privateTransport: any): 'requests' | 'curl' | 'utls' {
-    if (!['requests', 'curl', 'utls'].includes(privateTransport)) {
-      throw new Error("private_transport must be 'requests', 'curl' or 'utls'");
+  _normalizePrivateTransport(this: Client, privateTransport: any): 'http1' | 'http2' | 'mobile' {
+    if (!['http1', 'http2', 'mobile'].includes(privateTransport)) {
+      throw Boom.badRequest("privateTransport must be 'http1', 'http2' or 'mobile'");
     }
     return privateTransport;
   }
 
-  _configurePrivateSessionRetry(this: Client, privateTransport?: 'requests' | 'curl' | 'utls' | null): void {
+  _configurePrivateSessionRetry(this: Client, privateTransport?: 'http1' | 'http2' | 'mobile' | null): void {
     const transport = privateTransport ?? this.privateTransport;
-    if ((transport === 'curl' || transport === 'utls') && this._privateAdapterTransport === transport) return;
+    if ((transport === 'http2' || transport === 'mobile') && this._privateAdapterTransport === transport) return;
     this.private.mount(transport, this._buildPrivateSessionRetryStrategy());
     this.privateTransport = transport;
     this._privateAdapterTransport = transport;
@@ -397,7 +398,7 @@ export class PrivateRequestMixin {
         try {
           this.lastJson = lastJson = resp.json();
         } catch {
-          /* ValueError */
+          /* not a number */
         }
         if (!lastJson || typeof lastJson !== 'object' || Array.isArray(lastJson)) lastJson = {};
         const message = lastJson.message || '';
@@ -544,7 +545,7 @@ export class PrivateRequestMixin {
       if (!headers) headers = {};
       if (!('authorization' in headers)) headers.Authorization = this.authorization;
     }
-    const kwargs: PrivateRequestOptions = {
+    const extraArgs: PrivateRequestOptions = {
       params: opts.params ?? null,
       login: opts.login ?? false,
       withSignature: opts.withSignature ?? true,
@@ -555,17 +556,17 @@ export class PrivateRequestMixin {
     try {
       if (this.delayRange) await randomDelay(this.delayRange);
       this.privateRequestsCount += 1;
-      await this._sendPrivateRequest(endpoint, data, kwargs);
+      await this._sendPrivateRequest(endpoint, data, extraArgs);
     } catch (e) {
       if (e instanceof ClientRequestTimeout) {
         this.logger.info('Wait 60 seconds and try one more time (ClientRequestTimeout)');
         await sleep(60);
-        return this._sendPrivateRequest(endpoint, data, kwargs);
+        return this._sendPrivateRequest(endpoint, data, extraArgs);
       }
       if (e instanceof ClientIncompleteReadError) {
         this.logger.info('Wait 2 seconds and try one more time (ClientIncompleteReadError)');
         await sleep(2);
-        return this._sendPrivateRequest(endpoint, data, kwargs);
+        return this._sendPrivateRequest(endpoint, data, extraArgs);
       }
       if (this.handleException) {
         await this.handleException(this, e);
@@ -575,11 +576,11 @@ export class PrivateRequestMixin {
       } else {
         throw e;
       }
-      if (kwargs.login && this.userId) {
+      if (extraArgs.login && this.userId) {
         // After challenge resolve return last_json
         return this.lastJson;
       }
-      return this._sendPrivateRequest(endpoint, data, kwargs);
+      return this._sendPrivateRequest(endpoint, data, extraArgs);
     }
     return this.lastJson;
   }

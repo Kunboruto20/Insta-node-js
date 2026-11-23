@@ -1,12 +1,13 @@
 // Copyright (c) 2017 https://github.com/ping
 // This software is released under the MIT License. https://opensource.org/licenses/MIT
+import * as Boom from '@hapi/boom';
 import { copyFileSync, promises as fsp, statSync } from 'node:fs';
 import sharp from 'sharp';
 import { get as httpGet } from './http/session';
 import { ffmpeg, makeTmpPath, probe } from './utils/ffmpeg';
-import { MOVIEPY_2_FFMPEG_MESSAGE } from './utils/video';
+import { FFMPEG_HINT_MESSAGE } from './utils/video';
 
-export const VIDEO_EXTRA_MESSAGE = `prepareVideo() requires ffmpeg. ${MOVIEPY_2_FFMPEG_MESSAGE}`;
+export const VIDEO_EXTRA_MESSAGE = `prepareVideo() requires ffmpeg. ${FFMPEG_HINT_MESSAGE}`;
 
 export type Size = [number, number];
 
@@ -16,7 +17,7 @@ export type Size = [number, number];
 export function calcResize(maxSize: Size | null, currSize: Size, minSize: Size | null = [0, 0]): Size | undefined {
   const [maxWidth, maxHeight] = maxSize || [0, 0];
   const [minWidth, minHeight] = minSize || [0, 0];
-  if ((maxWidth && minWidth > maxWidth) || (maxHeight && minHeight > maxHeight)) throw new Error('Invalid min / max sizes.');
+  if ((maxWidth && minWidth > maxWidth) || (maxHeight && minHeight > maxHeight)) throw Boom.badRequest('Invalid min / max sizes.');
   const [origWidth, origHeight] = currSize;
   if (maxWidth && maxHeight && (origWidth > maxWidth || origHeight > maxHeight)) {
     const f = Math.min((1.0 * maxWidth) / origWidth, (1.0 * maxHeight) / origHeight);
@@ -36,7 +37,7 @@ export function calcCrop(aspectRatios: number | number[], currSize: Size): [numb
   let minAspectRatio: number;
   let maxAspectRatio: number;
   if (Array.isArray(aspectRatios)) {
-    if (aspectRatios.length !== 2) throw new Error('Invalid aspect ratios');
+    if (aspectRatios.length !== 2) throw Boom.badRequest('Invalid aspect ratios');
     minAspectRatio = Number(aspectRatios[0]);
     maxAspectRatio = Number(aspectRatios[1]);
   } else {
@@ -162,8 +163,8 @@ export async function prepareVideo(
   const minSize = opts.minSize ?? [612, 320];
   const saveOnly = opts.saveOnly ?? false;
   const preset = opts.preset ?? 'medium';
-  if (saveOnly && !savePath) throw new Error('"save_path" cannot be empty.');
-  if (savePath && !savePath.toLowerCase().endsWith('.mp4')) throw new Error('You must specify a .mp4 save path');
+  if (saveOnly && !savePath) throw Boom.badRequest('"savePath" cannot be empty.');
+  if (savePath && !savePath.toLowerCase().endsWith('.mp4')) throw Boom.badRequest('You must specify a .mp4 save path');
   let vidIsModified = false; // flag to track if re-encoding can be skipped
   const tempVideoFile = makeTmpPath('.mp4', 'ipae_');
   let videoSrcFilename: string;
@@ -179,18 +180,18 @@ export async function prepareVideo(
   try {
     info = await probe(tempVideoFile);
   } catch (e: any) {
-    if (e?.name === 'FfmpegUnavailableError') throw new Error(VIDEO_EXTRA_MESSAGE);
+    if (e?.name === 'FfmpegUnavailableError') throw Boom.failedDependency(VIDEO_EXTRA_MESSAGE);
     throw e;
   }
   let duration = info.duration;
   let size: Size = [info.width, info.height];
   const filters: string[] = [];
-  if (duration < 3 * 1.0) throw new Error('Duration is too short');
+  if (duration < 3 * 1.0) throw Boom.badRequest('Duration is too short');
   if (duration > maxDuration * 1.0) {
     duration = maxDuration;
     vidIsModified = true;
   }
-  if (thumbnailFrameTs > duration) throw new Error('Invalid thumbnail frame');
+  if (thumbnailFrameTs > duration) throw Boom.badRequest('Invalid thumbnail frame');
   if (aspectRatios) {
     const cropBox = calcCrop(aspectRatios, size);
     if (cropBox) {
@@ -233,6 +234,6 @@ export async function prepareVideo(
     videoContentLen = statSync(savePath!).size;
     videoContent = savePath!; // return the file path instead
   }
-  if (videoContentLen > 50 * 1024 * 1000) throw new Error('Video file is too big.');
+  if (videoContentLen > 50 * 1024 * 1000) throw Boom.entityTooLarge('Video file is too big.');
   return [videoContent, size, duration, videoThumbnailContent];
 }

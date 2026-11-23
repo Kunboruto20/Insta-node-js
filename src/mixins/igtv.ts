@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import * as config from '../config';
 import { ClientError, IGTVConfigureError, IGTVNotUpload } from '../exceptions';
 import { Location, Media, Usertag } from '../types';
-import { pyJsonDumps } from '../utils/serialization';
+import { jsonDumps } from '../utils/serialization';
 import { dateTimeOriginal, randomInt, sleep } from '../utils/timing';
 import { analyzeVideoForUpload } from '../utils/video';
 import { pf } from './photo';
@@ -72,7 +72,7 @@ export class UploadIGTVMixin {
       is_igtv_video: '1',
       retry_context: '{"num_step_auto_retry":0,"num_reupload":0,"num_step_manual_retry":0}',
       media_type: '2',
-      xsharing_user_ids: pyJsonDumps([this.userIdInt]),
+      xsharing_user_ids: jsonDumps([this.userIdInt]),
       upload_id: uploadId,
       upload_media_duration_ms: String(Math.trunc(duration * 1000)),
       upload_media_width: String(width),
@@ -80,7 +80,7 @@ export class UploadIGTVMixin {
     };
     let headers: Record<string, string> = {
       'Accept-Encoding': 'gzip',
-      'X-Instagram-Rupload-Params': pyJsonDumps(ruploadParams),
+      'X-Instagram-Rupload-Params': jsonDumps(ruploadParams),
       X_FB_VIDEO_WATERFALL_ID: waterfallId,
       'X-Entity-Type': 'video/mp4',
     };
@@ -140,7 +140,7 @@ export class UploadIGTVMixin {
       source_type: '4',
       title,
       caption,
-      usertags: pyJsonDumps({ in: tags }),
+      usertags: jsonDumps({ in: tags }),
       date_time_original: dateTimeOriginal(),
       igtv_share_preview_to_feed: '1',
       upload_id: uploadId,

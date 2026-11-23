@@ -121,10 +121,11 @@ export const SUPPORTED_CAPABILITIES = [
   { value: 'gyroscope_enabled', name: 'gyroscope' },
 ];
 
-/** Python-like str.format for `{name}` placeholders. */
+/** Replace `{name}` placeholders with values from `data`. */
+import * as Boom from '@hapi/boom';
 export function formatTemplate(template: string, data: Record<string, any>): string {
   return template.replace(/\{(\w+)\}/g, (_, key) => {
-    if (!(key in data)) throw new Error(`KeyError: ${key}`);
+    if (!(key in data)) throw Boom.badRequest(`Missing template value: ${key}`);
     return String(data[key]);
   });
 }

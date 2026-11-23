@@ -1,7 +1,9 @@
 /**
- * ffmpeg/ffprobe helpers (replacement for MoviePy in the python library).
- * Binary resolution: FFMPEG_PATH / IMAGEIO_FFMPEG_EXE env → optional `ffmpeg-static` package → `ffmpeg` on PATH.
+ * ffmpeg/ffprobe helpers used for video processing.
+ * Binary resolution: FFMPEG_PATH env → optional `ffmpeg-static` package → `ffmpeg` on PATH.
  */
+import * as Boom from '@hapi/boom';
+import { boomifyError } from '../errors';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, closeSync, openSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,7 +24,7 @@ function optionalRequire(name: string): any {
 }
 
 export function ffmpegPath(): string {
-  return process.env.FFMPEG_PATH || process.env.IMAGEIO_FFMPEG_EXE || optionalRequire('ffmpeg-static') || 'ffmpeg';
+  return process.env.FFMPEG_PATH || optionalRequire('ffmpeg-static') || 'ffmpeg';
 }
 
 export function ffprobePath(): string {
@@ -33,6 +35,7 @@ export class FfmpegUnavailableError extends Error {
   constructor(message = FFMPEG_INSTALL_MESSAGE) {
     super(message);
     this.name = 'FfmpegUnavailableError';
+    boomifyError(this, 424, { code: 'DEPENDENCY_MISSING' });
   }
 }
 
@@ -55,7 +58,7 @@ export function run(bin: string, args: string[]): Promise<{ stdout: Buffer; stde
     child.on('error', (e: any) => reject(e?.code === 'ENOENT' ? new FfmpegUnavailableError() : e));
     child.on('close', (code) => {
       if (code === 0) resolve({ stdout: Buffer.concat(out), stderr: err });
-      else reject(new Error(`${path.basename(bin)} exited with code ${code}: ${err.slice(-2000)}`));
+      else reject(Boom.internal(`${path.basename(bin)} exited with code ${code}: ${err.slice(-2000)}`));
     });
   });
 }
@@ -76,7 +79,7 @@ export async function probe(file: string): Promise<ProbeInfo> {
   const { stdout } = await run(ffprobePath(), ['-v', 'error', '-print_format', 'json', '-show_streams', '-show_format', file]);
   const info = JSON.parse(stdout.toString());
   const video = (info.streams || []).find((s: any) => s.codec_type === 'video');
-  if (!video) throw new Error('No video stream found');
+  if (!video) throw Boom.badData('No video stream found');
   let width = Number(video.width);
   let height = Number(video.height);
   const rotate = Number(video.tags?.rotate || video.side_data_list?.find((d: any) => d.rotation !== undefined)?.rotation || 0);

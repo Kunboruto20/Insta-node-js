@@ -21,7 +21,7 @@ import {
 import { ConnectionError, HTTPError, JSONDecodeError, Response } from '../http/session';
 import { truncateLogText } from '../utils/logging';
 import { now, randomDelay, sleep } from '../utils/timing';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const GRAPHQL_API_URL = 'https://www.instagram.com/api/graphql';
@@ -111,13 +111,13 @@ export class PrivateGraphQLRequestMixin {
     const html = response.content.length ? response.content.toString('utf8') : '';
     if (html) {
       let s = html.indexOf('__eqmc');
-      // python: html.find returns -1 when absent and slices from -1
+      // a missing marker gives index -1, which slices from the end
       if (s < 0) s = html.length - 1;
       const e = s + 1000;
       let eqmc = html.slice(s, e);
       const s2 = eqmc.indexOf('{');
       const e2 = eqmc.indexOf('</script>');
-      eqmc = pySlice(eqmc, s2, e2);
+      eqmc = sliceRange(eqmc, s2, e2);
       if (eqmc) return JSON.parse(eqmc).f;
     }
     return null;
@@ -153,8 +153,8 @@ export class PrivateGraphQLRequestMixin {
     opts: { data?: any; params?: Record<string, any> | null; headers?: Record<string, any> | null; returnJson?: boolean; retriesCount?: number; retriesTimeout?: number } = {},
   ): Promise<any> {
     const { data = null, params = null, headers = null, returnJson = true, retriesCount = 1, retriesTimeout = 2 } = opts;
-    pyAssert(retriesCount <= 10, 'Retries count is too high');
-    pyAssert(retriesTimeout <= 600, 'Retries timeout is too high');
+    ensure(retriesCount <= 10, 'Retries count is too high');
+    ensure(retriesTimeout <= 600, 'Retries timeout is too high');
     this.injectSessionidToPublic();
     for (let iteration = 0; iteration < retriesCount; iteration++) {
       try {
@@ -458,8 +458,8 @@ export class PrivateGraphQLRequestMixin {
   }
 }
 
-/** Python-style slice with negative indices */
-export function pySlice(s: string, start: number, end: number): string {
+/** String slice that supports negative indices (counted from the end) */
+export function sliceRange(s: string, start: number, end: number): string {
   const len = s.length;
   const a = start < 0 ? Math.max(0, len + start) : Math.min(start, len);
   const b = end < 0 ? Math.max(0, len + end) : Math.min(end, len);

@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { promises as fsp } from 'node:fs';
 import sharp from 'sharp';
 import {
@@ -27,7 +28,7 @@ import { InstagramIdCodec } from '../utils/ids';
 import { iterPaginated } from '../utils/iterators';
 import { deepcopy, dumps, jsonValue } from '../utils/serialization';
 import { sleep } from '../utils/timing';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const MEDIA_INFO_DOC_ID = '27830990013244856';
@@ -61,7 +62,7 @@ type ExcCls = new (...args: any[]) => Error;
 /** Helpers for media */
 export class MediaMixin {
   async _mediaShareStoryBackground(this: Client): Promise<string> {
-    const p = makeTmpPath('.jpg', 'instagrapi_story_share_');
+    const p = makeTmpPath('.jpg', 'insta_story_share_');
     try {
       await sharp({ create: { width: 720, height: 1280, channels: 3, background: { r: 0, g: 0, b: 0 } } }).jpeg({ quality: 95 }).toFile(p);
     } catch (e) {
@@ -303,12 +304,12 @@ export class MediaMixin {
     ExceptionCls: ExcCls,
     context: string,
     previousStoryIds: Set<string> | null,
-    storyKwargs: Record<string, any>,
+    storyExtra: Record<string, any>,
   ): Promise<Story> {
     const media = this._extractConfiguredMedia(configured);
-    if (media !== null) return makeStory({ ...media, ...storyKwargs });
+    if (media !== null) return makeStory({ ...media, ...storyExtra });
     const story = await this._newStoryAfterUpload(previousStoryIds);
-    if (story !== null) return { ...story, ...storyKwargs } as Story;
+    if (story !== null) return { ...story, ...storyExtra } as Story;
     throw new ExceptionCls(`${context} configure succeeded without media payload and uploaded story was not visible`, {
       response: this.lastResponse,
       ...(isDict(this.lastJson) ? this.lastJson : {}),
@@ -332,7 +333,7 @@ export class MediaMixin {
   async mediaId(this: Client, mediaPk: string | number): Promise<string> {
     let mediaId = String(mediaPk);
     if (!mediaId.includes('_')) {
-      pyAssert(/^\d+$/.test(mediaId), `media_id must been contain digits, now ${mediaId}`);
+      ensure(/^\d+$/.test(mediaId), `media_id must been contain digits, now ${mediaId}`);
       const user = await this.mediaUser(mediaId);
       mediaId = `${mediaId}_${user.pk}`;
     }
@@ -344,7 +345,7 @@ export class MediaMixin {
     let mediaPk = String(mediaId);
     if (mediaPk.includes('_')) {
       const parts = mediaPk.split('_');
-      if (parts.length !== 2) throw new Error('ValueError: too many values to unpack (expected 2)');
+      if (parts.length !== 2) throw Boom.badRequest('Invalid media id: expected "<media_pk>_<user_id>"');
       mediaPk = parts[0];
     }
     return String(mediaPk);
@@ -366,7 +367,7 @@ export class MediaMixin {
     rotation = 0.0,
     extraData: Record<string, string> | null = null,
   ): Promise<Story> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(mediaId);
     const mediaPk = this.mediaPk(id);
     let mediaOwnerId: string | null = null;
@@ -411,7 +412,7 @@ export class MediaMixin {
       if (location) return this.mediaPkFromUrl(location);
     }
     const last = parts.pop();
-    if (last === undefined) throw new RangeError('pop from empty list');
+    if (last === undefined) throw Boom.badRequest('Invalid media URL');
     return this.mediaPkFromCode(last);
   }
 
@@ -464,7 +465,7 @@ export class MediaMixin {
       throw e;
     }
     const items = result.items;
-    if (!items || !items.length) throw new RangeError('pop from empty list');
+    if (!items || !items.length) throw Boom.badData('No media items in response');
     return extractMediaV1(items.pop());
   }
 
@@ -508,7 +509,7 @@ export class MediaMixin {
 
   /** Delete media by Media ID */
   async mediaDelete(this: Client, mediaId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = await this.mediaId(mediaId);
     const result = await this.privateRequest(`media/${id}/delete/`, this.withDefaultData({ media_id: id }));
     delete this._medias_cache[this.mediaPk(id)];
@@ -524,7 +525,7 @@ export class MediaMixin {
     usertags: Usertag[] = [],
     location: Location | null = null,
   ): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = await this.mediaId(mediaId);
     const media = await this.mediaInfo(id); // from cache
     const tags = usertags.map((tag) => ({ user_id: tag.user.pk, position: [tag.x, tag.y] }));
@@ -533,7 +534,7 @@ export class MediaMixin {
       container_module: 'edit_media_info',
       feed_position: '0',
       location: await this.locationBuild(location),
-      usertags: require('../utils/serialization').pyJsonDumps({ in: tags }),
+      usertags: require('../utils/serialization').jsonDumps({ in: tags }),
       is_carousel_bumped_post: 'false',
     };
     if (media.product_type === 'igtv') {
@@ -552,7 +553,7 @@ export class MediaMixin {
 
   /** Link one Reel to another Reel ("Watch Next" button). */
   async mediaLinkReel(this: Client, mediaId: string | number, targetMediaId: string | number, linkName = 'Watch Next'): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = await this.mediaId(mediaId);
     const target = await this.mediaId(targetMediaId);
     const data = {
@@ -577,7 +578,7 @@ export class MediaMixin {
 
   /** Like a media (revert=true to unlike) */
   async mediaLike(this: Client, mediaId: string | number, revert = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(mediaId);
     const data = {
       inventory_source: 'media_or_ad',
@@ -616,7 +617,7 @@ export class MediaMixin {
     noteStyle = 13,
     extraData: Record<string, any> | null = null,
   ): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const data: Record<string, any> = {
       inventory_source: 'recommended_clips_chaining_model',
       media_client_position: '0',
@@ -635,7 +636,7 @@ export class MediaMixin {
 
   /** Delete a note attached to a media item. */
   async mediaNoteDelete(this: Client, noteId: string, extraData: Record<string, any> | null = null): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const data: Record<string, any> = {
       inventory_source: 'recommended_clips_chaining_model',
       carousel_index: '-1',
@@ -1174,7 +1175,7 @@ export class MediaMixin {
     };
     if (extraData) Object.assign(data, extraData);
     if (manualBox && manualBox.length) {
-      data.cutout_sticker_data = require('../utils/serialization').pyJsonDumps({ manual_mask: { box: manualBox } });
+      data.cutout_sticker_data = require('../utils/serialization').jsonDumps({ manual_mask: { box: manualBox } });
     } else if (useAiDetection) data.detect_subject = 'true';
     const result = await this.privateRequest('media/configure_to_cutout_sticker/', data);
     return this._extractConfiguredMediaOrRaise(result, PrivateError, 'Cutout sticker upload');

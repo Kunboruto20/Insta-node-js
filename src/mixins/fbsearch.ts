@@ -1,8 +1,10 @@
+import { isInvalidInput } from '../errors';
+import * as Boom from '@hapi/boom';
 import { ClientGraphqlError, PrivateError } from '../exceptions';
 import { extractHashtagV1, extractLocation, extractMediaV1, extractTrack, extractUserShort } from '../extractors';
 import { Hashtag, Location, Media, Track, UserShort, makeHashtag } from '../types';
 import { deepcopy } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 /** Opaque cursor for mediaSearchTopGqlChunk (immutable) */
@@ -70,7 +72,7 @@ export class FbSearchMixin {
 
   /** Return account results from Instagram's web search on a saved session. The query must contain at least one non-whitespace character. */
   async webSearchUsers(this: Client, query: string): Promise<UserShort[]> {
-    if (!query.trim()) throw new Error('query must not be blank');
+    if (!query.trim()) throw Boom.badRequest('query must not be blank');
     const data = await this.publicDocIdGraphqlRequest(
       '27706427925724183',
       {
@@ -121,7 +123,7 @@ export class FbSearchMixin {
     return (await this.privateRequest('fbsearch/topsearch_flat/', null, { params })).list;
   }
 
-  /** Search users (overrides UserMixin.searchUsers like in python's MRO; `count` is ignored, IG returns 30) */
+  /** Search users (takes precedence over UserMixin.searchUsers; `count` is ignored, IG returns 30) */
   async searchUsers(this: Client, query: string, _count?: number): Promise<UserShort[]> {
     const params = { search_surface: 'user_search_page', timezone_offset: this.timezoneOffset, count: 30, q: query };
     const result = await this.privateRequest('users/search/', null, { params });
@@ -201,7 +203,7 @@ export class FbSearchMixin {
   /** Retrieves recently searched results: list of [client_time, UserShort | Hashtag | keyword dict] */
   async fbsearchRecent(this: Client): Promise<Array<[number | null, UserShort | Hashtag | Record<string, any>]>> {
     const result = await this.privateRequest('fbsearch/recent_searches/');
-    pyAssert((result.status ?? '') === 'ok', 'Failed to retrieve recent searches');
+    ensure((result.status ?? '') === 'ok', 'Failed to retrieve recent searches');
     const data: Array<[number | null, any]> = [];
     for (const item of result.recent || []) {
       if ('user' in item) data.push([item.client_time ?? null, extractUserShort(item.user)]);
@@ -253,7 +255,7 @@ export class FbSearchMixin {
 
   /** Return media from the first page of mobile Top search. With amount=0, return every media item on that page. */
   async mediaSearchTopGql(this: Client, query: string, amount = 0): Promise<Media[]> {
-    if (amount < 0) throw new Error('amount must be non-negative');
+    if (amount < 0) throw Boom.badRequest('amount must be non-negative');
     const connection = await this._topSerpConnection(query, this._topSerpSearchIds());
     return this._extractTopSerpMedia(connection, new Set(), amount);
   }
@@ -273,8 +275,8 @@ export class FbSearchMixin {
       seenMedia = new Set();
       seenCursors = new Set();
     } else {
-      if (!(cursor instanceof TopSerpCursor)) throw new TypeError('cursor must come from mediaSearchTopGqlChunk');
-      if (cursor.query !== query) throw new Error('cursor belongs to a different search query');
+      if (!(cursor instanceof TopSerpCursor)) throw Boom.badRequest('cursor must come from mediaSearchTopGqlChunk');
+      if (cursor.query !== query) throw Boom.badRequest('cursor belongs to a different search query');
       searchIds = cursor.searchIds;
       after = cursor.after;
       seenMedia = new Set(cursor.seenMedia);
@@ -408,7 +410,7 @@ export class FbSearchMixin {
         try {
           medias.push(extractMediaV1(node));
         } catch (exc: any) {
-          if (exc instanceof TypeError || exc instanceof RangeError) {
+          if (isInvalidInput(exc)) {
             this.logger.warning('Skipping malformed fbsearch media node: %s', exc.message);
             continue;
           }

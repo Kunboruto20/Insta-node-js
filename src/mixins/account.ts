@@ -1,8 +1,9 @@
+import * as Boom from '@hapi/boom';
 import { extractAccount, extractUserShort } from '../extractors';
 import { Account, UserShort } from '../types';
 import { genToken, generateSignature } from '../utils/auth';
-import { dumps, pyJsonDumps } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { dumps, jsonDumps } from '../utils/serialization';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export type ProfessionalAccountType = 2 | 3;
@@ -79,7 +80,7 @@ export class AccountMixin {
       creatorDestinationMigration = false,
       extraData = null,
     } = opts;
-    if (toAccountType !== 2 && toAccountType !== 3) throw new Error('to_account_type must be 2 (business) or 3 (creator)');
+    if (toAccountType !== 2 && toAccountType !== 3) throw Boom.badRequest('toAccountType must be 2 (business) or 3 (creator)');
     const data: Record<string, any> = {
       entry_point: entryPoint,
       creator_destination_migration: this._accountBoolValue(creatorDestinationMigration),
@@ -126,7 +127,7 @@ export class AccountMixin {
   }
 
   async removeBioLinks(this: Client, linkIds: Array<number | string>): Promise<any> {
-    const signedBody = { signed_body: 'SIGNATURE.' + pyJsonDumps({ _uid: this.userIdInt, _uuid: this.uuid, link_ids: linkIds }) };
+    const signedBody = { signed_body: 'SIGNATURE.' + jsonDumps({ _uid: this.userIdInt, _uuid: this.uuid, link_ids: linkIds }) };
     return this.privateRequest('accounts/remove_bio_links/', signedBody, { withSignature: false });
   }
 
@@ -142,7 +143,7 @@ export class AccountMixin {
 
   /** Sets your account private */
   async accountSetPrivate(this: Client): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const data = this.withActionData({ _uid: String(this.userId), _uuid: this.uuid });
     const result = await this.privateRequest('accounts/set_private/', data);
     return result.status === 'ok';
@@ -150,7 +151,7 @@ export class AccountMixin {
 
   /** Sets your account public */
   async accountSetPublic(this: Client): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const data = this.withActionData({ _uid: String(this.userId), _uuid: this.uuid });
     const result = await this.privateRequest('accounts/set_public/', data);
     return result.status === 'ok';

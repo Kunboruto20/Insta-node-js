@@ -6,7 +6,7 @@ export function randomUniform(a: number, b: number): number {
   return a + (b - a) * Math.random();
 }
 
-/** Python random.randint (inclusive) */
+/** Random integer in [a, b] (inclusive) */
 export function randomInt(a: number, b: number): number {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }

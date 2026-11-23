@@ -1,10 +1,12 @@
+import { isInvalidInput } from '../errors';
+import * as Boom from '@hapi/boom';
 import { ClientError, ClientLoginRequired, HashtagNotFound, PrivateError, WrongCursorError } from '../exceptions';
 import { extractHashtagGql, extractHashtagV1, extractMediaGql, extractMediaV1 } from '../extractors';
 import { Hashtag, Media, makeHashtag } from '../types';
 import { iterPaginated } from '../utils/iterators';
 import { parseJson } from '../utils/json';
-import { dumps, pyJsonDumps } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { dumps, jsonDumps } from '../utils/serialization';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export type HashtagTab = 'top' | 'recent' | 'clips';
@@ -29,10 +31,10 @@ export class HashtagMixin {
     let normalized = name.trim();
     if (normalized.startsWith('#')) {
       normalized = normalized.replace(/^#+/, '').trim();
-      if (!normalized) throw new Error('Hashtag name cannot be empty');
+      if (!normalized) throw Boom.badRequest('Hashtag name cannot be empty');
       process.emitWarning(`Hashtag names should not include a leading '#'; normalized to '${normalized}'.`, 'UserWarning');
     }
-    if (!normalized) throw new Error('Hashtag name cannot be empty');
+    if (!normalized) throw Boom.badRequest('Hashtag name cannot be empty');
     return normalized;
   }
 
@@ -60,7 +62,7 @@ export class HashtagMixin {
   /** Get chunk of medias for a hashtag and max_id (cursor) by Private Mobile API. Returns [medias, next cursor] */
   async hashtagMediasV1Chunk(this: Client, name: string, maxAmount = 27, tabKey: HashtagTab = 'top', maxId: string | null = null): Promise<[Media[], string | null]> {
     name = this._normalizeHashtagName(name);
-    pyAssert(['top', 'recent', 'clips'].includes(tabKey), 'You must specify one of the options for "tab_key" ("top", "recent", "clips")');
+    ensure(['top', 'recent', 'clips'].includes(tabKey), 'You must specify one of the options for "tab_key" ("top", "recent", "clips")');
     const mediaRecencyFilter: Record<string, string> = { top: 'default', recent: 'top_recent_posts' };
     const data: Record<string, any> = {
       tab: tabKey,
@@ -75,7 +77,7 @@ export class HashtagMixin {
       let nmIds: any;
       try {
         const decoded = parseJson(Buffer.from(maxId, 'base64').toString('utf8'));
-        if (!Array.isArray(decoded) || decoded.length !== 2) throw new Error('bad cursor');
+        if (!Array.isArray(decoded) || decoded.length !== 2) throw Boom.badRequest('Invalid cursor');
         [pageId, nmIds] = decoded;
       } catch {
         throw new WrongCursorError();
@@ -87,17 +89,17 @@ export class HashtagMixin {
     const result = await this.privateRequest(`tags/${name}/sections/`, data, { withSignature: false });
     let nextMaxId: string | null = null;
     if (result.next_max_id) {
-      nextMaxId = Buffer.from(pyJsonDumps([result.next_max_id, result.next_media_ids ?? null])).toString('base64');
+      nextMaxId = Buffer.from(jsonDumps([result.next_max_id, result.next_media_ids ?? null])).toString('base64');
     }
     for (const section of result.sections) {
       for (const node of this._hashtagSectionMediaNodes(section)) {
         if (maxAmount && medias.length >= maxAmount) break;
         let media: Media;
         try {
-          if (!node || node.media === undefined) throw new TypeError("KeyError: 'media'");
+          if (!node || node.media === undefined) throw Boom.badData('Missing field: media');
           media = extractMediaV1(node.media);
         } catch (exc: any) {
-          if (exc instanceof TypeError || exc instanceof RangeError) {
+          if (isInvalidInput(exc)) {
             this.logger.warning('Skipping malformed hashtag node: %s', exc.message);
             continue;
           }
@@ -138,7 +140,7 @@ export class HashtagMixin {
       try {
         medias.push(extractMediaGql(edge.node));
       } catch (exc: any) {
-        if (exc instanceof TypeError || exc instanceof RangeError) this.logger.warning('Skipping malformed hashtag GraphQL node: %s', exc.message);
+        if (isInvalidInput(exc)) this.logger.warning('Skipping malformed hashtag GraphQL node: %s', exc.message);
         else throw exc;
       }
     }
@@ -231,7 +233,7 @@ export class HashtagMixin {
 
   /** Follow to hashtag (unfollow=true to unfollow) */
   async hashtagFollow(this: Client, hashtag: string, unfollow = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const name = unfollow ? 'unfollow' : 'follow';
     const data = this.withActionData({ user_id: this.userIdInt });
     const result = await this.privateRequest(`web/tags/${name}/${hashtag}/`, data, { domain: 'www.instagram.com' });
@@ -240,7 +242,7 @@ export class HashtagMixin {
 
   /** Get hashtags followed by the authenticated account (amount=0 → all) */
   async hashtagFollowing(this: Client, amount = 0): Promise<Hashtag[]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const result = await this.privateGraphqlFollowingList(String(this.userId), this.rankToken, undefined, null, 'u=3, i', null, null, null, false, false);
     const data = result.data || {};
     let following: Record<string, any> = {};

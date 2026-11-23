@@ -1,6 +1,7 @@
 /**
  * Instagram realtime (edge-mqtt.facebook.com) MQTToT client.
  */
+import * as Boom from '@hapi/boom';
 import { randomUUID } from 'crypto';
 import {
   MQTToTConnection,
@@ -24,7 +25,7 @@ import {
   writeThriftObject,
 } from './mqttot';
 import { parseJson } from '../utils/json';
-import { dumps, pyJsonDumps, pyRepr } from '../utils/serialization';
+import { dumps, jsonDumps, reprValue } from '../utils/serialization';
 import type { Client } from '../client';
 
 export const REALTIME_HOST = 'edge-mqtt.facebook.com';
@@ -35,7 +36,7 @@ export function isDict(v: any): v is Record<string, any> {
   return v !== null && typeof v === 'object' && !Array.isArray(v) && !Buffer.isBuffer(v);
 }
 
-/** Python json.loads(str) — accepts str/bytes */
+/** Parse JSON from a string or Buffer (big integers kept exact) */
 export function jsonLoads(value: string | Buffer): any {
   return parseJson(typeof value === 'string' ? value : decodeUtf8Strict(value));
 }
@@ -80,7 +81,7 @@ export class RealtimeClient {
       await this.transport.send(writeConnectPacket(this.buildConnection()));
       const packet = decodePacket(await this.transport.recvPacket());
       if (packet.packet_type !== 'connack' || packet.return_code !== 0) {
-        throw new MQTToTConnectionError(`Realtime MQTT connect failed: ${pyRepr(packet.return_code)}`);
+        throw new MQTToTConnectionError(`Realtime MQTT connect failed: ${reprValue(packet.return_code)}`);
       }
     }
     this.connected = true;
@@ -96,16 +97,16 @@ export class RealtimeClient {
 
   buildConnection(): MQTToTConnection {
     const sessionid = this.client.sessionid;
-    if (!sessionid) throw new Error('AssertionError: Login required');
+    if (!sessionid) throw Boom.unauthorized('Login required');
     const deviceId = this.client.phoneId;
-    if (!deviceId) throw new Error('AssertionError: Client phone_id is required');
+    if (!deviceId) throw Boom.preconditionFailed('Client phoneId is required');
     const userAgent = this.client.userAgent;
     const appVersion = this.clientAppVersion();
     const capabilities = (this.client as any).capabilities ?? '3brTv10=';
     const locale: string = (this.client as any).locale ?? 'en_US';
     const userId = this.client.userIdInt;
     if (userId === null || userId === undefined) {
-      throw new TypeError("int() argument must be a string, a bytes-like object or a real number, not 'NoneType'");
+      throw Boom.unauthorized('Login required: user id is missing');
     }
     return new MQTToTConnection(
       deviceId.slice(0, 20),
@@ -172,7 +173,7 @@ export class RealtimeClient {
     const seqId = last.seq_id;
     const snapshotAtMs = last.snapshot_at_ms;
     if (seqId === undefined || seqId === null || snapshotAtMs === undefined || snapshotAtMs === null) {
-      throw new Error('Direct inbox did not return realtime sync state');
+      throw Boom.badGateway('Direct inbox did not return realtime sync state');
     }
     const state = { seq_id: seqId, snapshot_at_ms: snapshotAtMs };
     await this.irisSubscribe(state.seq_id, state.snapshot_at_ms);
@@ -297,7 +298,7 @@ export class RealtimeClient {
   }
 
   async ping(maxPackets = 5): Promise<boolean> {
-    if (!this.connected) throw new Error('Realtime client is not connected');
+    if (!this.connected) throw Boom.preconditionFailed('Realtime client is not connected');
     await this.transport.send(writePingreqPacket());
     for (let i = 0; i < maxPackets; i++) {
       const packet = decodePacket(await this.transport.recvPacket());
@@ -460,10 +461,10 @@ export class RealtimeClient {
   }
 
   static directRealtimeEventKind(event: Record<string, any>): string | null {
-    const path = pyStr(event.path || '').toLowerCase();
-    const action = pyStr(event.action || '').toLowerCase();
+    const path = textValue(event.path || '').toLowerCase();
+    const action = textValue(event.action || '').toLowerCase();
     const value = event.value ?? null;
-    const valueText = (isDict(value) ? pyJsonDumps(sortKeysDeep(value)) : pyStr(value)).toLowerCase();
+    const valueText = (isDict(value) ? jsonDumps(sortKeysDeep(value)) : textValue(value)).toLowerCase();
     if (valueText.includes('activity_status') || path.includes('activity_indicator') || path.includes('typing')) {
       return 'typing';
     }
@@ -519,9 +520,9 @@ export class RealtimeClient {
   }
 }
 
-/** Python str() for values */
-export function pyStr(value: any): string {
+/** Text form of a value (strings as-is, other values via reprValue) */
+export function textValue(value: any): string {
   if (typeof value === 'string') return value;
-  if (Buffer.isBuffer(value)) return `b${pyRepr(value.toString('latin1'))}`;
-  return pyRepr(value);
+  if (Buffer.isBuffer(value)) return `b${reprValue(value.toString('latin1'))}`;
+  return reprValue(value);
 }

@@ -1,10 +1,11 @@
+import * as Boom from '@hapi/boom';
 import * as path from 'node:path';
 import * as config from '../config';
 import { ClientError, ClientGraphqlError, ClientNotFoundError, StoryNotFound, UserNotFound } from '../exceptions';
 import { extractStoryArchiveDay, extractStoryV1, extractStoryWeb, extractUserShort, extractViewer } from '../extractors';
 import { Story, StoryArchiveDay, UserShort, Viewer } from '../types';
 import { deepcopy } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 function isDict(v: any): v is Record<string, any> {
@@ -16,7 +17,7 @@ export class StoryMixin {
   storyPkFromUrl(this: Client, url: string): string {
     const p = new URL(url, 'http://placeholder').pathname;
     const parts = p.split('/').filter((x) => x && /^\d+$/.test(x));
-    if (!parts.length) throw new RangeError('list index out of range');
+    if (!parts.length) throw Boom.badRequest('Invalid story URL');
     return String(parts[0]);
   }
 
@@ -42,7 +43,7 @@ export class StoryMixin {
 
   /** Delete story */
   async storyDelete(this: Client, storyPk: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const mediaId = await this.mediaId(storyPk);
     delete this._stories_cache[this.mediaPk(mediaId)];
     return this.mediaDelete(mediaId);
@@ -50,14 +51,14 @@ export class StoryMixin {
 
   /** Get users' stories (web GraphQL). Returns UserShort list with `stories` populated. */
   async usersStoriesGql(this: Client, userIds: Array<string | number>, amount = 0): Promise<UserShort[]> {
-    pyAssert(Array.isArray(userIds), 'user_ids should be a list of user_id');
+    ensure(Array.isArray(userIds), 'user_ids should be a list of user_id');
     if (userIds !== null && !userIds.length) return [];
     const users: UserShort[] = [];
     for (let start = 0; start < userIds.length; start += 25) {
       const batch = userIds.slice(start, start + 25).map(String);
       const body = await this.graphqlRequest({
         data: {
-          variables: require('../utils/serialization').pyJsonDumps({
+          variables: require('../utils/serialization').jsonDumps({
             reel_ids_arr: batch,
             __relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider: true,
           }),
@@ -87,7 +88,7 @@ export class StoryMixin {
   /** Get a user's stories (Public API) */
   async userStoriesGql(this: Client, userId: string | number, amount: number | null = null): Promise<Story[]> {
     const users = await this.usersStoriesGql([userId], amount || 0);
-    if (!users.length) throw new RangeError('list index out of range');
+    if (!users.length) throw Boom.badData('No users in reel response', { code: 'EMPTY_REEL' });
     let stories = deepcopy(users[0].stories) as Story[];
     if (amount) stories = stories.slice(0, amount);
     return stories;
@@ -96,7 +97,7 @@ export class StoryMixin {
   /** Get a user's stories through the modern web GraphQL API. */
   async userStoriesWeb(this: Client, userId: string | number, amount: number | null = null): Promise<Story[]> {
     const data = {
-      variables: require('../utils/serialization').pyJsonDumps({
+      variables: require('../utils/serialization').jsonDumps({
         reel_ids_arr: [String(userId)],
         __relay_internal__pv__PolarisCommunityNoteStoriesLabelEnabledrelayprovider: true,
       }),
@@ -122,14 +123,14 @@ export class StoryMixin {
       return await this.userStoriesGql(userId, amount);
     } catch (e) {
       if (e instanceof ClientNotFoundError) throw new UserNotFound(e, { ...this.lastJson, user_id: userId });
-      if (e instanceof RangeError) return [];
+      if (Boom.isBoom(e) && (e.data as any)?.code === 'EMPTY_REEL') return [];
       throw e;
     }
   }
 
   /** Get a user's stories (Private API) */
   async userStoriesV1(this: Client, userId: string | number, amount: number | null = null): Promise<Story[]> {
-    const params = { supported_capabilities_new: require('../utils/serialization').pyJsonDumps(config.SUPPORTED_CAPABILITIES) };
+    const params = { supported_capabilities_new: require('../utils/serialization').jsonDumps(config.SUPPORTED_CAPABILITIES) };
     const id = BigInt(String(userId)).toString();
     const reel = (await this.privateRequest(`feed/user/${id}/story/`, null, { params })).reel || {};
     let stories: Story[] = (reel.items || []).map((item: any) => extractStoryV1(item));
@@ -229,7 +230,7 @@ export class StoryMixin {
 
   /** Mark stories as seen */
   async storySeen(this: Client, storyPks: Array<string | number>, skippedStoryPks: Array<string | number> = []): Promise<boolean> {
-    pyAssert(Array.isArray(storyPks), 'story_pks should be a list of story.pk');
+    ensure(Array.isArray(storyPks), 'story_pks should be a list of story.pk');
     const ids: string[] = [];
     for (const mid of storyPks) ids.push(await this.mediaId(mid));
     const skipped: string[] = [];
@@ -249,9 +250,9 @@ export class StoryMixin {
     url = String(url);
     const urlPath = new URL(url).pathname;
     const fname = urlPath.slice(urlPath.lastIndexOf('/') + 1).trim();
-    pyAssert(
+    ensure(
       fname,
-      'The URL must contain the path to the file (mp4 or jpg).\nRead the documentation https://subzeroid.github.io/instagrapi/usage-guide/story.html',
+      'The URL must contain the path to the file (mp4 or jpg).',
     );
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
@@ -264,7 +265,7 @@ export class StoryMixin {
     const uniqueSet = new Set<string>();
     const viewers: Viewer[] = [];
     const pk = this.mediaPk(storyPk);
-    const params: Record<string, any> = { supported_capabilities_new: require('../utils/serialization').pyJsonDumps(config.SUPPORTED_CAPABILITIES) };
+    const params: Record<string, any> = { supported_capabilities_new: require('../utils/serialization').jsonDumps(config.SUPPORTED_CAPABILITIES) };
     while (true) {
       if (maxId) params.max_id = maxId;
       const result = await this.privateRequest(`media/${pk}/list_reel_media_viewer/`, null, { params });
@@ -291,7 +292,7 @@ export class StoryMixin {
     const uniqueSet = new Set<string>();
     const likers: UserShort[] = [];
     const pk = this.mediaPk(storyPk);
-    const params: Record<string, any> = { supported_capabilities_new: require('../utils/serialization').pyJsonDumps(config.SUPPORTED_CAPABILITIES) };
+    const params: Record<string, any> = { supported_capabilities_new: require('../utils/serialization').jsonDumps(config.SUPPORTED_CAPABILITIES) };
     while (true) {
       if (maxId) params.max_id = maxId;
       const result = await this.privateRequest(`media/${pk}/list_reel_media_viewer/`, null, { params });
@@ -317,7 +318,7 @@ export class StoryMixin {
 
   /** Like a story (revert=true to unlike). markSeen: mark story as seen before liking */
   async storyLike(this: Client, storyId: string | number, revert = false, markSeen = true): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const mediaId = await this.mediaId(storyId);
     if (markSeen && !revert) await this.storySeen([this.mediaPk(mediaId)]);
     const data = {
@@ -340,8 +341,8 @@ export class StoryMixin {
 
   /** Vote in a story poll. vote: poll option index (0-based) */
   async storyPollVote(this: Client, storyId: string | number, pollId: string, vote: number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
-    if (!Number.isInteger(vote) || vote < 0) throw new Error('vote must be a non-negative option index');
+    ensure(this.userId, 'Login required');
+    if (!Number.isInteger(vote) || vote < 0) throw Boom.badRequest('vote must be a non-negative option index');
     const mediaId = await this.mediaId(storyId);
     const data = { _uid: String(this.userId), _csrftoken: this.token, vote: String(vote) };
     const result = await this.privateRequest(`media/${mediaId}/${pollId}/story_poll_vote/`, this.withActionData(data));
@@ -352,7 +353,7 @@ export class StoryMixin {
   async stickerTray(this: Client): Promise<any> {
     const data = { _uid: this.userIdInt, type: 'static_stickers', _uuid: this.uuid };
     const result = await this.privateRequest('creatives/sticker_tray/', data, { withSignature: true });
-    pyAssert(result.status === 'ok');
+    ensure(result.status === 'ok');
     return result;
   }
 }

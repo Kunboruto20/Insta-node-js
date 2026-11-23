@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
@@ -6,9 +7,9 @@ import { extractDirectMedia, extractDirectMessage, extractDirectShortThread, ext
 import { prepareImage } from '../imageUtil';
 import { DirectMedia, DirectMessage, DirectShortThread, DirectThread, Media, UserShort } from '../types';
 import { Session } from '../http/session';
-import { dumps, pyFloat, pyInt } from '../utils/serialization';
+import { dumps, floatValue, intValue } from '../utils/serialization';
 import { randomInt } from '../utils/timing';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { readVideoMetadata, readVideoMetadataWithFfprobe } from '../utils/video';
 import type { Client } from '../client';
 
@@ -32,11 +33,11 @@ export type DirectMediaType = 'photo' | 'video';
 export type BOX = (typeof BOXES)[number];
 export type IdLike = string | number | bigint;
 
-/** python int() list for thread / user ids (BigInt beyond the safe range, serialized as raw JSON numbers) */
+/** integer list for thread / user ids (BigInt beyond the safe range, serialized as raw JSON numbers) */
 export function _directIdList(ids: IdLike | IdLike[] | null | undefined): Array<number | bigint> {
   if (ids === null || ids === undefined) return [];
-  if (!Array.isArray(ids)) return [pyInt(ids)];
-  return ids.map((i) => pyInt(i));
+  if (!Array.isArray(ids)) return [intValue(ids)];
+  return ids.map((i) => intValue(i));
 }
 
 const DEFAULT_NAV_CHAIN =
@@ -77,7 +78,7 @@ export class DirectMixin {
     threadMessageLimit: number | null = null,
     cursor: string | null = null,
   ): Promise<[DirectThread[], string | null]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params: Record<string, any> = {
       ...this._directRequestTrackingParams(),
       visual_message_return_type: 'unseen',
@@ -91,11 +92,11 @@ export class DirectMixin {
       push_disabled: this._boolToIgString(this.pushDisabled),
     };
     if (selectedFilter) {
-      if (!(SELECTED_FILTERS as readonly string[]).includes(selectedFilter)) throw new Error(`selected_filter must be one of ${SELECTED_FILTERS}`);
+      if (!(SELECTED_FILTERS as readonly string[]).includes(selectedFilter)) throw Boom.badRequest(`selectedFilter must be one of ${SELECTED_FILTERS}`);
       params.selected_filter = selectedFilter;
     }
     if (box) {
-      pyAssert((BOXES as readonly string[]).includes(box), `Unsupported box="${box}" ${BOXES}`);
+      ensure((BOXES as readonly string[]).includes(box), `Unsupported box="${box}" ${BOXES}`);
       params.folder = box === 'general' ? '1' : '0';
     }
     if (threadMessageLimit) params.thread_message_limit = threadMessageLimit;
@@ -127,13 +128,13 @@ export class DirectMixin {
 
   /** Get the lightweight Direct message requests preview (counters such as pending_requests_total). */
   async directPendingRequestsPreview(this: Client, pendingInboxFilters: string[] | null = null): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     return this.privateRequest('direct_v2/async_get_pending_requests_preview/', null, { params: { pending_inbox_filters: dumps(pendingInboxFilters || []) } });
   }
 
   /** Get direct threads of Pending inbox. Chunk. Returns [threads, oldest_cursor] */
   async directPendingChunk(this: Client, cursor: string | null = null): Promise<[DirectThread[], string | null]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params: Record<string, any> = {
       visual_message_return_type: 'unseen',
       persistentBadging: 'true',
@@ -148,7 +149,7 @@ export class DirectMixin {
 
   /** Approve pending direct thread */
   async directPendingApprove(this: Client, threadId: IdLike): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const result = await this.privateRequest(`direct_v2/threads/${threadId}/approve/`, { filter: 'DEFAULT', _uuid: this.uuid }, { withSignature: false });
     return (result.status ?? '') === 'ok';
   }
@@ -174,7 +175,7 @@ export class DirectMixin {
 
   /** Get direct threads of Spam inbox (hidden requests). Chunk. */
   async directSpamChunk(this: Client, cursor: string | null = null): Promise<[DirectThread[], string | null]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params: Record<string, any> = { visual_message_return_type: 'unseen', persistentBadging: 'true', is_prefetching: 'false' };
     if (cursor) params.cursor = cursor;
     const result = await this.privateRequest('direct_v2/spam_inbox/', null, { params });
@@ -184,7 +185,7 @@ export class DirectMixin {
 
   /** Get all the information about a Direct Message thread */
   async directThread(this: Client, threadId: IdLike, amount = 20): Promise<DirectThread> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params: Record<string, any> = { visual_message_return_type: 'unseen', direction: 'older', seq_id: '40065', limit: '20' }; // 59663
     let cursor: string | null = null;
     let items: any[] = [];
@@ -210,7 +211,7 @@ export class DirectMixin {
 
   /** Get all the messages from a thread */
   async directMessages(this: Client, threadId: IdLike, amount = 20): Promise<DirectMessage[]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     return (await this.directThread(threadId, amount)).messages;
   }
 
@@ -223,8 +224,8 @@ export class DirectMixin {
 
   /** Post a message on a Direct Message thread */
   async directAnswer(this: Client, threadId: IdLike, text: string): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
-    return this.directSend(text, [], [pyInt(threadId)]);
+    ensure(this.userId, 'Login required');
+    return this.directSend(text, [], [intValue(threadId)]);
   }
 
   /**
@@ -240,19 +241,19 @@ export class DirectMixin {
     replyToMessage: DirectMessage | null = null,
     opts: { navChain?: string | null } = {},
   ): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     const tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
-    pyAssert((SEND_ATTRIBUTES as readonly string[]).includes(sendAttribute), `Unsupported send_attribute="${sendAttribute}" ${SEND_ATTRIBUTES}`);
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((SEND_ATTRIBUTES as readonly string[]).includes(sendAttribute), `Unsupported send_attribute="${sendAttribute}" ${SEND_ATTRIBUTES}`);
     let navChain = opts.navChain ?? null;
     if (navChain === null) navChain = DEFAULT_NAV_CHAIN;
     else if (typeof navChain !== 'string' || !navChain || navChain !== navChain.trim() || Array.from(navChain).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) > 126)) {
-      throw new Error('nav_chain must be non-empty printable ASCII without leading or trailing whitespace');
+      throw Boom.badRequest('navChain must be non-empty printable ASCII without leading or trailing whitespace');
     }
     let method = 'text';
     const token = this.generateMutationToken();
-    const kwargs: Record<string, any> = {
+    const extraArgs: Record<string, any> = {
       action: 'send_item',
       is_x_transport_forward: 'false',
       send_silently: 'false',
@@ -269,17 +270,17 @@ export class DirectMixin {
     };
     if (text.includes('http')) {
       method = 'link';
-      kwargs.link_text = text;
-      kwargs.link_urls = dumps(Array.from(text.matchAll(/(https?:\/\/[^\s]+)/g), (m) => m[1]));
-    } else kwargs.text = text;
-    if (tids.length) kwargs.thread_ids = dumps(tids);
-    if (uids.length) kwargs.recipient_users = dumps([uids]);
+      extraArgs.link_text = text;
+      extraArgs.link_urls = dumps(Array.from(text.matchAll(/(https?:\/\/[^\s]+)/g), (m) => m[1]));
+    } else extraArgs.text = text;
+    if (tids.length) extraArgs.thread_ids = dumps(tids);
+    if (uids.length) extraArgs.recipient_users = dumps([uids]);
     if (replyToMessage) {
-      kwargs.replied_to_action_source = 'swipe';
-      kwargs.replied_to_item_id = replyToMessage.id;
-      kwargs.replied_to_client_context = replyToMessage.client_context;
+      extraArgs.replied_to_action_source = 'swipe';
+      extraArgs.replied_to_item_id = replyToMessage.id;
+      extraArgs.replied_to_client_context = replyToMessage.client_context;
     }
-    const result = await this.privateRequest(`direct_v2/threads/broadcast/${method}/`, this.withDefaultData(kwargs), {
+    const result = await this.privateRequest(`direct_v2/threads/broadcast/${method}/`, this.withDefaultData(extraArgs), {
       withSignature: false,
       headers: { 'X-IG-Nav-Chain': navChain },
     });
@@ -296,8 +297,8 @@ export class DirectMixin {
     actionSource = 'double_tap',
     targetItemType: string | null = null,
   ): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
-    pyAssert(reactionStatus === 'created' || reactionStatus === 'deleted', `Unsupported reaction_status="${reactionStatus}"`);
+    ensure(this.userId, 'Login required');
+    ensure(reactionStatus === 'created' || reactionStatus === 'deleted', `Unsupported reaction_status="${reactionStatus}"`);
     const token = this.generateMutationToken();
     const data: Record<string, any> = {
       action: 'send_item',
@@ -365,13 +366,13 @@ export class DirectMixin {
 
   /** Send a direct photo to a list of users or threads (messenger image upload + photo_attachment). */
   async directSendPhoto(this: Client, filePath: string, userIds: IdLike[] = [], threadIds: IdLike[] = []): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     let tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     if (uids.length) tids = [await this._directThreadIdFromUserIds(uids, 'photo')];
     const ext = path.extname(filePath).toLowerCase();
-    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw new Error('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
+    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw Boom.unsupportedMediaType('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
     const [photoBytes] = await prepareImage(filePath);
     const entityName = `fb_uploader_${Date.now()}`;
     const mediaId = await this._photoRupload(photoBytes, entityName);
@@ -425,17 +426,17 @@ export class DirectMixin {
         { ...(this.lastJson && typeof this.lastJson === 'object' ? this.lastJson : {}), user_ids: uids },
       );
     }
-    return pyInt(threadId);
+    return intValue(threadId);
   }
   /**
    * Send a direct video to a list of users or threads.
    * Replicates the IG Android client's three-step protocol (FB-domain rupload → raven_attachment broadcast).
    */
   async directSendVideo(this: Client, filePath: string, userIds: IdLike[] = [], threadIds: IdLike[] = []): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     let tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     if (uids.length) tids = [await this._directThreadIdFromUserIds(uids, 'video')];
     const videoBytes = await fsp.readFile(filePath);
     const size = videoBytes.length;
@@ -489,11 +490,11 @@ export class DirectMixin {
         rotation: '0.0',
         background_coverage: '0.0',
       }),
-      clips: [{ length: pyFloat(durationSec), source_type: '3', camera_position: 'back' }],
+      clips: [{ length: floatValue(durationSec), source_type: '3', camera_position: 'back' }],
       poster_frame_index: 0,
-      length: pyFloat(durationSec),
+      length: floatValue(durationSec),
       audio_muted: false,
-      edits: { filter_type: 0, filter_strength: pyFloat(1) },
+      edits: { filter_type: 0, filter_strength: floatValue(1) },
       extra: { source_width: width, source_height: height },
       device: { manufacturer: 'Google', model: 'sdk_gphone_arm64', android_version: 30, android_release: '11' },
     };
@@ -625,10 +626,10 @@ export class DirectMixin {
    * waveform: list of floats (0..1); random when omitted.
    */
   async directSendVoice(this: Client, filePath: string, userIds: IdLike[] = [], threadIds: IdLike[] = [], waveform: number[] | null = null): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     let tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     if (uids.length) tids = [await this._directThreadIdFromUserIds(uids, 'voice')];
     const audioBytes = await fsp.readFile(filePath);
     const uploadId = String(Date.now());
@@ -647,7 +648,7 @@ export class DirectMixin {
       device_id: this.androidDeviceId,
       mutation_token: token,
       _uuid: this.uuid,
-      waveform: dumps(waveform.map((w) => pyFloat(w))),
+      waveform: dumps(waveform.map((w) => floatValue(w))),
       waveform_sampling_frequency_hz: '10',
       upload_id: uploadId,
       offline_threading_id: token,
@@ -666,21 +667,21 @@ export class DirectMixin {
 
   /** Send a direct file (photo or video) to list of users or threads */
   async directSendFile(this: Client, filePath: string, userIds: IdLike[] = [], threadIds: IdLike[] = [], contentType: DirectMediaType = 'photo'): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     const tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     if (contentType === 'photo') return this.directSendPhoto(filePath, uids, tids);
     if (contentType === 'video') return this.directSendVideo(filePath, uids, tids);
-    throw new Error('content_type must be "photo" or "video"');
+    throw Boom.badRequest('contentType must be "photo" or "video"');
   }
 
   /** Send a cutout sticker to list of users or threads */
   async directSendCutoutSticker(this: Client, stickerPk: string, userIds: IdLike[] | null = null, threadIds: IdLike[] | null = null): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     const tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     const token = this.generateMutationToken();
     const data: Record<string, any> = {
       action: 'send_item',
@@ -700,18 +701,18 @@ export class DirectMixin {
 
   /** Get a presence of Users */
   async directUsersPresence(this: Client, userIds: IdLike[]): Promise<any> {
-    pyAssert(this.userId, 'Login Required');
+    ensure(this.userId, 'Login Required');
     const uids = _directIdList(userIds);
     const data = { _uuid: this.uuid, subscriptions_off: 'false', request_data: dumps(uids) };
     const result = await this.privateRequest('direct_v2/fetch_and_subscribe_presence/', this.withDefaultData(data), { withSignature: false });
-    pyAssert(result.status === 'ok', `Failed to retrieve presence of user_id=${uids}`);
+    ensure(result.status === 'ok', `Failed to retrieve presence of user_id=${uids}`);
     return result;
   }
 
   /** Getting active presences in Direct */
   async directActivePresence(this: Client): Promise<any> {
     const result = await this.privateRequest('direct_v2/get_presence_active_now/', null, { params: { recent_thread_limit: 0, suggested_followers_limit: 100 } });
-    pyAssert(result.status === 'ok', 'Failed to retrieve active presences');
+    ensure(result.status === 'ok', 'Failed to retrieve active presences');
     return result.user_presence || {};
   }
 
@@ -731,7 +732,7 @@ export class DirectMixin {
 
   /** Search threads by query (e.g. username). mode: "raven" | "universal" */
   async directSearch(this: Client, query: string, mode: SEARCH_MODE = 'universal'): Promise<UserShort[]> {
-    pyAssert((SEARCH_MODES as readonly string[]).includes(mode), `Unsupported mode="${mode}" ${SEARCH_MODES}`);
+    ensure((SEARCH_MODES as readonly string[]).includes(mode), `Unsupported mode="${mode}" ${SEARCH_MODES}`);
     const params = {
       max_ai_bot_results: '0',
       max_ig_bus_results: '10',
@@ -757,7 +758,7 @@ export class DirectMixin {
       result_types: '["message_content","reshared_content"]',
     };
     const result = await this.privateRequest('direct_v2/search_secondary/', null, { params });
-    pyAssert((result.status ?? '') === 'ok');
+    ensure((result.status ?? '') === 'ok');
     const searchResults = result.message_search_results || {};
     return (searchResults.message_search_result_items || []).map((item: any) => {
       const message = item.matched_message_info || {};
@@ -767,20 +768,20 @@ export class DirectMixin {
 
   /** Check whether the account's Direct inbox has upgraded interop messaging. */
   async directHasInteropUpgraded(this: Client): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     return Boolean((await this.privateRequest('direct_v2/has_interop_upgraded/')).has_interop_upgraded);
   }
 
   /** Search Instagram's generated AI Direct bot suggestions. */
   async directSearchGenAiBots(this: Client, amount = 20): Promise<UserShort[]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const result = await this.privateRequest('direct_v2/search_gen_ai_bots/', null, { params: { num_ai_bots: String(amount) } });
     return (result.user_search_results || []).filter((i: any) => i.username).map((i: any) => extractUserShort(i));
   }
 
   /** Get all Direct channels for a user (defaults to the authenticated user). */
   async directChannels(this: Client, userId: IdLike | null = null, threadSubtypes: number[] | null = null): Promise<any[]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params = { user_id: String(userId || this.userId), thread_subtypes: dumps(threadSubtypes || [29]) };
     return (await this.privateRequest('direct_v2/get_all_channels/', null, { params })).all_channels_list || [];
   }
@@ -811,7 +812,7 @@ export class DirectMixin {
 
   /** Hide (delete) a thread. moveToSpam: move future requests to spam */
   async directThreadHide(this: Client, threadId: IdLike, moveToSpam = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const result = await this.privateRequest(
       `direct_v2/threads/${threadId}/hide/`,
       { should_move_future_requests_to_spam: moveToSpam, _uuid: this.uuid },
@@ -822,16 +823,16 @@ export class DirectMixin {
 
   /** Update a direct thread title */
   async directThreadUpdateTitle(this: Client, threadId: IdLike, title: string): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const result = await this.privateRequest(`direct_v2/threads/${threadId}/update_title/`, { _uuid: this.uuid, title }, { withSignature: false });
     return (result.status ?? '') === 'ok';
   }
 
   /** Add users to a group Direct thread. */
   async directThreadAddUsers(this: Client, threadId: IdLike, userIds: IdLike[]): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
-    pyAssert(uids.length, 'At least one user_id required');
+    ensure(uids.length, 'At least one user_id required');
     const result = await this.privateRequest(
       `direct_v2/threads/${threadId}/add_user/`,
       { _uuid: this.uuid, user_ids: dumps(uids.map(String)) },
@@ -842,15 +843,15 @@ export class DirectMixin {
 
   /** Set Direct end-to-end encryption eligibility state. */
   async directSetE2eeEligibility(this: Client, e2eeEligibility = 4): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const result = await this.privateRequest('direct_v2/set_e2ee_eligibility/', { _uuid: this.uuid, e2ee_eligibility: String(e2eeEligibility) }, { withSignature: false });
     return (result.status ?? '') === 'ok';
   }
   /** Create a group Direct thread (needs at least two recipient user_ids). Returns thread_id */
   async directThreadCreate(this: Client, userIds: IdLike[], title = ''): Promise<string> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
-    pyAssert(uids.length >= 2, 'Group threads require at least two recipient user_ids');
+    ensure(uids.length >= 2, 'Group threads require at least two recipient user_ids');
     const result = await this.privateRequest('direct_v2/create_group_thread/', {
       _uuid: this.uuid,
       _uid: String(this.userId),
@@ -873,13 +874,13 @@ export class DirectMixin {
     sendAttribute: SEND_ATTRIBUTE_MEDIA = 'feed_timeline',
     mediaType: DirectMediaType = 'photo',
   ): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const token = this.generateMutationToken();
     const uids = _directIdList(userIds);
     const tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     const id = await this.mediaId(mediaId);
-    const kwargs: Record<string, any> = {
+    const extraArgs: Record<string, any> = {
       action: 'send_item',
       is_shh_mode: '0',
       send_attribution: sendAttribute,
@@ -893,24 +894,24 @@ export class DirectMixin {
       is_ae_dual_send: 'false',
       offline_threading_id: token,
     };
-    if (uids.length) kwargs.recipient_users = dumps([uids]);
-    if (tids.length) kwargs.thread_ids = dumps(tids);
-    if (sendAttribute === 'feed_contextual_chain' || sendAttribute === 'feed_short_url') kwargs.inventory_source = 'recommended_explore_grid_cover_model';
-    if (sendAttribute === 'feed_timeline') kwargs.inventory_source = 'media_or_ad';
-    const result = await this.privateRequest('direct_v2/threads/broadcast/media_share/', this.withDefaultData(kwargs), {
+    if (uids.length) extraArgs.recipient_users = dumps([uids]);
+    if (tids.length) extraArgs.thread_ids = dumps(tids);
+    if (sendAttribute === 'feed_contextual_chain' || sendAttribute === 'feed_short_url') extraArgs.inventory_source = 'recommended_explore_grid_cover_model';
+    if (sendAttribute === 'feed_timeline') extraArgs.inventory_source = 'media_or_ad';
+    const result = await this.privateRequest('direct_v2/threads/broadcast/media_share/', this.withDefaultData(extraArgs), {
       params: { media_type: mediaType },
       withSignature: false,
     });
-    pyAssert((result.status ?? '') === 'ok');
+    ensure((result.status ?? '') === 'ok');
     return extractDirectMessage(result.payload);
   }
 
   /** Share a story to list of users or threads */
   async directStoryShare(this: Client, storyId: string, userIds: IdLike[] = [], threadIds: IdLike[] = []): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     const tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     const id = await this.mediaId(storyId);
     const storyPk = this.mediaPk(id);
     const token = this.generateMutationToken();
@@ -982,12 +983,12 @@ export class DirectMixin {
 
   /** Share a profile to list of users or threads */
   async directProfileShare(this: Client, userId: IdLike, userIds: IdLike[] = [], threadIds: IdLike[] = []): Promise<DirectMessage> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const uids = _directIdList(userIds);
     const tids = _directIdList(threadIds);
-    pyAssert((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
+    ensure((uids.length || tids.length) && !(uids.length && tids.length), 'Specify user_ids or thread_ids, but not both');
     const token = this.generateMutationToken();
-    const kwargs: Record<string, any> = {
+    const extraArgs: Record<string, any> = {
       profile_user_id: userId,
       action: 'send_item',
       is_shh_mode: '0',
@@ -1001,16 +1002,16 @@ export class DirectMixin {
       is_ae_dual_send: 'false',
       offline_threading_id: token,
     };
-    if (uids.length) kwargs.recipient_users = dumps([uids]);
-    if (tids.length) kwargs.thread_ids = dumps(tids);
-    const result = await this.privateRequest('direct_v2/threads/broadcast/profile/', this.withDefaultData(kwargs), { withSignature: false });
-    pyAssert((result.status ?? '') === 'ok');
+    if (uids.length) extraArgs.recipient_users = dumps([uids]);
+    if (tids.length) extraArgs.thread_ids = dumps(tids);
+    const result = await this.privateRequest('direct_v2/threads/broadcast/profile/', this.withDefaultData(extraArgs), { withSignature: false });
+    ensure((result.status ?? '') === 'ok');
     return extractDirectMessage(result.payload);
   }
 
   /** Get all the media from a thread */
   async directMedia(this: Client, threadId: IdLike, amount = 20): Promise<DirectMedia[]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params: Record<string, any> = { ...this._directRequestTrackingParams(), limit: 20, media_type: 'media_shares' };
     let maxTimestamp: any = null;
     let items: DirectMedia[] = [];

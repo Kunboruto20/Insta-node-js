@@ -4,6 +4,8 @@
  * Pure Node implementation: `net`/`tls` sockets, `zlib` and a Thrift compact
  * protocol writer/reader. No external MQTT library is required.
  */
+import * as Boom from '@hapi/boom';
+import { boomifyError } from '../errors';
 import * as net from 'net';
 import * as tls from 'tls';
 import * as zlib from 'zlib';
@@ -169,7 +171,7 @@ export function writeConnectPacket(connection: MQTToTConnection, keepAlive = 20)
 }
 
 export function writePublishPacket(topic: string, payload: Buffer, qos = 1, packetId = 1): Buffer {
-  if (qos !== 0 && qos !== 1) throw new RangeError('Only QoS 0 and QoS 1 are supported');
+  if (qos !== 0 && qos !== 1) throw Boom.badRequest('Only QoS 0 and QoS 1 are supported');
   let variableHeader = writeUtf8(String(topic));
   if (qos) variableHeader = Buffer.concat([variableHeader, u16(packetId)]);
   const body = Buffer.concat([variableHeader, payload]);
@@ -251,17 +253,21 @@ export function readThriftObject(data: Buffer, descriptors: readonly ThriftDescr
 // Transport
 // ---------------------------------------------------------------------------
 
+/** No data arrived within the socket timeout (Boom 408, `name === 'TimeoutError'`). */
 export class MQTToTTimeoutError extends Error {
   constructor(message = 'timed out') {
     super(message);
     this.name = 'TimeoutError';
+    boomifyError(this, 408);
   }
 }
 
+/** The MQTT connection failed or was closed (Boom 503, `name === 'ConnectionError'`). */
 export class MQTToTConnectionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ConnectionError';
+    boomifyError(this, 503);
   }
 }
 
@@ -275,7 +281,7 @@ export interface MQTToTTransport {
 
 export interface SocketTransportOptions {
   port?: number;
-  /** seconds (like Python socket timeout) */
+  /** socket timeout in seconds */
   timeout?: number;
   tlsOptions?: tls.ConnectionOptions | null;
   proxy?: string | null;
@@ -362,14 +368,14 @@ export class SocketMQTToTTransport implements MQTToTTransport {
     try {
       parsed = new URL(proxy);
     } catch {
-      throw new RangeError(`Unsupported realtime proxy URL: ${this.proxy}`);
+      throw Boom.badRequest(`Unsupported realtime proxy URL: ${this.proxy}`);
     }
     const scheme = parsed.protocol.replace(/:$/, '').toLowerCase();
     const proxyTypes: Record<string, number> = { http: 0, https: 0, socks4: 4, socks4a: 4, socks5: 5, socks5h: 5 };
     const proxyType = proxyTypes[scheme];
     const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
     if (proxyType === undefined || !hostname || !parsed.port) {
-      throw new RangeError(`Unsupported realtime proxy URL: ${this.proxy}`);
+      throw Boom.badRequest(`Unsupported realtime proxy URL: ${this.proxy}`);
     }
     const username = parsed.username ? decodeURIComponent(parsed.username) : null;
     const password = parsed.password ? decodeURIComponent(parsed.password) : null;
@@ -442,7 +448,7 @@ export class SocketMQTToTTransport implements MQTToTTransport {
   }
 
   async send(packet: Buffer): Promise<void> {
-    if (this.sock === null) throw new Error('Transport is not connected');
+    if (this.sock === null) throw Boom.preconditionFailed('Transport is not connected');
     const sock = this.sock;
     await new Promise<void>((resolve, reject) => {
       sock.write(packet, (err) => (err ? reject(err) : resolve()));
@@ -477,7 +483,7 @@ export class SocketMQTToTTransport implements MQTToTTransport {
   }
 
   async recvPacket(): Promise<Buffer> {
-    if (this.sock === null) throw new Error('Transport is not connected');
+    if (this.sock === null) throw Boom.preconditionFailed('Transport is not connected');
     const first = await this._recvExact(1);
     const remaining: number[] = [];
     for (;;) {
@@ -537,7 +543,7 @@ export class ThriftWriter {
 
   writeVarint(value: number | bigint): void {
     let v = BigInt(value);
-    if (v < 0n) throw new RangeError('varint must be non-negative');
+    if (v < 0n) throw Boom.badRequest('varint must be non-negative');
     for (;;) {
       if ((v & ~0x7fn) === 0n) {
         this.buffer.push(Number(v));
@@ -572,7 +578,7 @@ export class ThriftWriter {
     this.writeField(field, fieldType);
     if (bits === 8) {
       const n = Number(value);
-      if (n < -128 || n > 127) throw new RangeError('byte format requires -128 <= number <= 127');
+      if (n < -128 || n > 127) throw Boom.badRequest('byte value must be between -128 and 127');
       this.buffer.push(n & 0xff);
     } else if (bits === 64) {
       this.writeVarbigint(zigzag(value, 64));
@@ -640,7 +646,7 @@ export class ThriftReader {
       this._field = 0;
       return this.readStruct(descriptor ? [...descriptor.children] : []);
     }
-    throw new RangeError(`Unsupported thrift type: ${fieldType}`);
+    throw Boom.badData(`Unsupported thrift type: ${fieldType}`);
   }
 
   readList(): any[] {
@@ -668,7 +674,7 @@ export class ThriftReader {
   }
 
   readByte(): number {
-    if (this.pos >= this.data.length) throw new RangeError('index out of range');
+    if (this.pos >= this.data.length) throw Boom.badData('Unexpected end of thrift data');
     return this.data[this.pos++];
   }
 
@@ -696,7 +702,7 @@ function toInt(value: any): bigint {
   if (typeof value === 'boolean') return value ? 1n : 0n;
   if (typeof value === 'number') return BigInt(Math.trunc(value));
   const s = String(value).trim().replace(/_/g, '');
-  if (!/^[+-]?\d+$/.test(s)) throw new RangeError(`invalid literal for int() with base 10: '${value}'`);
+  if (!/^[+-]?\d+$/.test(s)) throw Boom.badRequest(`Not an integer: '${value}'`);
   return BigInt(s);
 }
 
@@ -709,7 +715,7 @@ function writeThriftStruct(writer: ThriftWriter, data: Record<string, any>, desc
   for (const [name, value] of Object.entries(data)) {
     if (value === null || value === undefined) continue;
     const descriptor = byName.get(name);
-    if (!descriptor) throw new Error(`KeyError: '${name}'`);
+    if (!descriptor) throw Boom.badRequest(`Unknown thrift field: '${name}'`);
     const thriftType = descriptor.type & 0xff;
     if (thriftType === ThriftTypes.BOOLEAN) writer.writeBool(descriptor.field, Boolean(value));
     else if (thriftType === ThriftTypes.BYTE) writer.writeInt(descriptor.field, toInt(value), 8);
@@ -727,7 +733,7 @@ function writeThriftStruct(writer: ThriftWriter, data: Record<string, any>, desc
     } else if (thriftType === ThriftTypes.MAP) {
       writeThriftMap(writer, descriptor.field, value);
     } else {
-      throw new RangeError(`Unsupported thrift type: ${descriptor.type}`);
+      throw Boom.badRequest(`Unsupported thrift type: ${descriptor.type}`);
     }
   }
 }
@@ -742,7 +748,7 @@ function writeThriftList(writer: ThriftWriter, itemType: number, values: any[]):
   for (const value of values) {
     if (itemType === ThriftTypes.INT_32) writer.writeVarint(zigzag(toInt(value), 32));
     else if (itemType === ThriftTypes.BINARY) writer.writeStringDirect(String(value));
-    else throw new RangeError(`Unsupported thrift list type: ${itemType}`);
+    else throw Boom.badRequest(`Unsupported thrift list type: ${itemType}`);
   }
 }
 
@@ -808,7 +814,7 @@ export function decodeRemainingLength(data: Buffer, offset: number): [number, nu
   let multiplier = 1;
   let value = 0;
   for (;;) {
-    if (offset >= data.length) throw new RangeError('index out of range');
+    if (offset >= data.length) throw Boom.badData('Unexpected end of MQTT packet');
     const encodedByte = data[offset++];
     value += (encodedByte & 127) * multiplier;
     if ((encodedByte & 128) === 0) return [value, offset];
@@ -816,13 +822,13 @@ export function decodeRemainingLength(data: Buffer, offset: number): [number, nu
   }
 }
 
-/** Python: (value << 1) ^ (value >> (bits - 1)) on arbitrary precision ints */
+/** ZigZag encode: (value << 1) ^ (value >> (bits - 1)) */
 export function zigzag(value: number | bigint, bits: number): bigint {
   const v = BigInt(value);
   return (v << 1n) ^ (v >> BigInt(bits - 1));
 }
 
-/** Python: (value >> 1) ^ -(value & 1) */
+/** ZigZag decode: (value >> 1) ^ -(value & 1) */
 export function unzigzag(value: number | bigint): bigint {
   const v = BigInt(value);
   return (v >> 1n) ^ -(v & 1n);

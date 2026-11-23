@@ -1,4 +1,4 @@
-/** JSON encoder matching instagrapi's InstagrapiJSONEncoder + dumps(separators=(",", ":")). */
+/** JSON encoding helpers (big integers, float markers, ASCII escaping, compact separators). */
 function encodeValue(_key: string, value: any): any {
   if (value instanceof Set) return Array.from(value);
   if (value instanceof Map) return Object.fromEntries(value);
@@ -6,23 +6,23 @@ function encodeValue(_key: string, value: any): any {
   return value;
 }
 
-/** A number that python would serialize as a float (e.g. 1080.0 instead of 1080) */
-export class PyFloat {
+/** A number serialized with a decimal part (e.g. 1080.0 instead of 1080) */
+export class FloatValue {
   constructor(public readonly value: number) {}
   toJSON(): number {
     return this.value;
   }
   toString(): string {
-    return pyFloatString(this.value);
+    return floatString(this.value);
   }
 }
 
-/** Mark a number as a python float for JSON serialization */
-export function pyFloat(n: number): PyFloat {
-  return new PyFloat(Number(n));
+/** Mark a number to be serialized as a float */
+export function floatValue(n: number): FloatValue {
+  return new FloatValue(Number(n));
 }
 
-export function pyFloatString(n: number): string {
+export function floatString(n: number): string {
   if (Number.isNaN(n)) return 'NaN';
   if (!Number.isFinite(n)) return n > 0 ? 'Infinity' : '-Infinity';
   if (Object.is(n, -0)) return '-0.0';
@@ -32,11 +32,11 @@ export function pyFloatString(n: number): string {
 }
 
 function prepare(value: any): any {
-  if (value instanceof PyFloat) return `__PYFLOAT__${pyFloatString(value.value)}__`;
+  if (value instanceof FloatValue) return `__FLOAT__${floatString(value.value)}__`;
   if (value instanceof Date) return Math.floor(value.getTime() / 1000);
   if (value instanceof Set) return Array.from(value, prepare);
   if (value instanceof Map) return Object.fromEntries(Array.from(value, ([k, v]) => [k, prepare(v)]));
-  if (typeof value === 'bigint') return `__PYBIGINT__${value.toString()}__`;
+  if (typeof value === 'bigint') return `__BIGINT__${value.toString()}__`;
   if (Array.isArray(value)) return value.map(prepare);
   if (value && typeof value === 'object' && !(value instanceof URL)) {
     const out: Record<string, any> = {};
@@ -47,17 +47,17 @@ function prepare(value: any): any {
   return value;
 }
 
-/** Python json.dumps default (ensure_ascii=True, separators=(", ", ": ")) */
-export function pyJsonDumps(data: any, compact = false): string {
+/** JSON with ASCII escaping and ", " / ": " separators (compact=true drops the spaces) */
+export function jsonDumps(data: any, compact = false): string {
   const json = (JSON.stringify(prepare(data), encodeValue) ?? 'null')
-    .replace(/"__PYBIGINT__(-?\d+)__"/g, '$1')
-    .replace(/"__PYFLOAT__([^"_]+)__"/g, '$1');
+    .replace(/"__BIGINT__(-?\d+)__"/g, '$1')
+    .replace(/"__FLOAT__([^"_]+)__"/g, '$1');
   const ascii = json.replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
   if (compact) return ascii;
   return addPySpacing(ascii);
 }
 
-/** Insert python's default ", " and ": " separators outside of strings. */
+/** Insert ", " and ": " separators outside of strings. */
 function addPySpacing(json: string): string {
   let out = '';
   let inStr = false;
@@ -80,7 +80,7 @@ function addPySpacing(json: string): string {
 
 /** Json dumps format as required Instagram (compact separators, ensure_ascii) */
 export function dumps(data: any): string {
-  return pyJsonDumps(data, true);
+  return jsonDumps(data, true);
 }
 
 /**
@@ -116,28 +116,28 @@ export function deepcopy<T>(value: T): T {
   return structuredClone(value);
 }
 
-/** Python repr() of JSON-like data (dict/list/str/int/float/bool/None). */
-export function pyRepr(v: any): string {
+/** Readable representation of JSON-like data (objects, arrays, strings, numbers, booleans, null). */
+export function reprValue(v: any): string {
   if (v === null || v === undefined) return 'None';
   if (v === true) return 'True';
   if (v === false) return 'False';
-  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : pyFloatRepr(v);
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : floatRepr(v);
   if (typeof v === 'bigint') return v.toString();
-  if (typeof v === 'string') return pyStrRepr(v);
+  if (typeof v === 'string') return reprString(v);
   if (v instanceof Date) return `datetime.datetime.fromtimestamp(${v.getTime() / 1000})`;
-  if (Array.isArray(v)) return '[' + v.map(pyRepr).join(', ') + ']';
-  if (typeof v === 'object') return '{' + Object.entries(v).map(([k, val]) => `${pyStrRepr(k)}: ${pyRepr(val)}`).join(', ') + '}';
+  if (Array.isArray(v)) return '[' + v.map(reprValue).join(', ') + ']';
+  if (typeof v === 'object') return '{' + Object.entries(v).map(([k, val]) => `${reprString(k)}: ${reprValue(val)}`).join(', ') + '}';
   return String(v);
 }
 
-function pyFloatRepr(n: number): string {
+function floatRepr(n: number): string {
   if (Number.isNaN(n)) return 'nan';
   if (!Number.isFinite(n)) return n > 0 ? 'inf' : '-inf';
   const s = String(n);
   return /[.e]/.test(s) ? s.replace(/e\+?/, 'e+').replace('e+-', 'e-') : `${s}.0`;
 }
 
-export function pyStrRepr(s: string): string {
+export function reprString(s: string): string {
   const quote = s.includes("'") && !s.includes('"') ? '"' : "'";
   let out = quote;
   for (const ch of s) {
@@ -165,8 +165,8 @@ export function htmlUnescape(s: string): string {
   });
 }
 
-/** python int(): returns number when safe, BigInt otherwise (serialized as a raw JSON number) */
-export function pyInt(v: any): number | bigint {
+/** Integer value: number when safe, BigInt otherwise (serialized as a raw JSON number) */
+export function intValue(v: any): number | bigint {
   const b = BigInt(String(v).trim());
   return b >= BigInt(Number.MIN_SAFE_INTEGER) && b <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(b) : b;
 }

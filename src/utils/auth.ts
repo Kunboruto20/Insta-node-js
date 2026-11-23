@@ -8,14 +8,14 @@ export function generateSignature(data: string): string {
   return `signed_body=SIGNATURE.${quotePlus(data)}`;
 }
 
-/** Python urllib.parse.quote_plus equivalent */
+/** Percent-encode for forms (spaces become '+') */
 export function quotePlus(value: string): string {
   return encodeURIComponent(value)
     .replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())
     .replace(/%20/g, '+');
 }
 
-/** Python urllib.parse.quote (safe="/") equivalent */
+/** Percent-encode a URL component (characters in `safe` are kept) */
 export function quote(value: string, safe = '/'): string {
   let out = encodeURIComponent(value).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
   for (const ch of safe) out = out.split(encodeURIComponent(ch)).join(ch);

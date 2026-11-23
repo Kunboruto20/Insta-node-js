@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { existsSync, promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import sharp from 'sharp';
@@ -21,19 +22,19 @@ import {
   Usertag,
   makeStorySticker,
 } from '../types';
-import { dumps, pyFloat, pyJsonDumps } from '../utils/serialization';
+import { dumps, floatValue, jsonDumps } from '../utils/serialization';
 import { dateTimeOriginal, randomInt, sleep } from '../utils/timing';
 import { withCoauthorUserIds } from '../utils/upload';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { CrosspostingOptions } from './crossposting';
 import type { Client } from '../client';
 
-/** python float (None stays null) */
+/** float value (null stays null) */
 export function pf(v: number | null | undefined): any {
-  return v === null || v === undefined ? null : pyFloat(v);
+  return v === null || v === undefined ? null : floatValue(v);
 }
 
-/** python round(x, 7) */
+/** round to 7 decimals (half-to-even) */
 export function round7(n: number): number {
   return Math.round(n * 1e7) / 1e7;
 }
@@ -89,8 +90,8 @@ export class DownloadPhotoMixin {
   async photoDownload(this: Client, mediaPk: string | number, folder = '', overwrite = true): Promise<string> {
     const pk = this.mediaPk(String(mediaPk));
     const media = await this._photoDownloadMediaInfo(pk);
-    pyAssert(media.media_type === 1, 'Must been photo');
-    if (!media.thumbnail_url) throw new Error('Photo thumbnail URL is empty');
+    ensure(media.media_type === 1, 'Must been photo');
+    if (!media.thumbnail_url) throw Boom.badData('Photo thumbnail URL is empty');
     const filename = `${media.user.username}_${pk}`;
     return this.photoDownloadByUrl(String(media.thumbnail_url), filename, folder, overwrite);
   }
@@ -131,17 +132,17 @@ export class UploadPhotoMixin {
     forStory = false,
     resizeMode: StoryResizeMode = 'fill',
   ): Promise<[string, number, number]> {
-    pyAssert(typeof filePath === 'string', `Path must been Path, now ${filePath} (${typeof filePath})`);
-    if (resizeMode !== 'fill' && resizeMode !== 'fit') throw new Error('resize_mode must be "fill" or "fit"');
-    if (resizeMode === 'fit' && !forStory) throw new Error('resize_mode="fit" is only supported for story uploads');
+    ensure(typeof filePath === 'string', `Path must been Path, now ${filePath} (${typeof filePath})`);
+    if (resizeMode !== 'fill' && resizeMode !== 'fit') throw Boom.badRequest('resizeMode must be "fill" or "fit"');
+    if (resizeMode === 'fit' && !forStory) throw Boom.badRequest('resizeMode "fit" is only supported for story uploads');
     const ext = path.extname(filePath).toLowerCase();
-    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw new Error('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
+    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw Boom.unsupportedMediaType('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
     let imageType = 'image/jpeg';
     if (ext === '.png') imageType = 'image/png';
     else if (ext === '.webp') imageType = 'image/webp';
     // upload_id = 516057248854759
     uploadId = uploadId || String(Date.now());
-    pyAssert(filePath, 'Not specified path to photo');
+    ensure(filePath, 'Not specified path to photo');
     const waterfallId = this.generateUuid();
     // upload_name example: '1576102477530_0_7823256191'
     const uploadName = `${uploadId}_0_${randomInt(1000000000, 9999999999)}`;
@@ -151,7 +152,7 @@ export class UploadPhotoMixin {
       media_type: '1', // "2" if upload_id else "1",
       xsharing_user_ids: '[]',
       upload_id: uploadId,
-      image_compression: pyJsonDumps({ lib_name: 'moz', lib_version: '3.1.m', quality: '80' }),
+      image_compression: jsonDumps({ lib_name: 'moz', lib_version: '3.1.m', quality: '80' }),
     };
     if (toAlbum) ruploadParams.is_sidecar = '1';
     let photoData: Buffer;
@@ -162,7 +163,7 @@ export class UploadPhotoMixin {
     const photoLen = String(photoData.length);
     const headers = this.privateHeaders({
       'Accept-Encoding': 'gzip',
-      'X-Instagram-Rupload-Params': pyJsonDumps(ruploadParams),
+      'X-Instagram-Rupload-Params': jsonDumps(ruploadParams),
       X_FB_PHOTO_WATERFALL_ID: waterfallId,
       'X-Entity-Type': imageType,
       Offset: '0',
@@ -192,7 +193,7 @@ export class UploadPhotoMixin {
   /** Upload photo and configure to feed */
   async photoUpload(this: Client, filePath: string, caption: string, opts: PhotoUploadOptions = {}): Promise<Media> {
     const ext = path.extname(filePath).toLowerCase();
-    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw new Error('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
+    if (!['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) throw Boom.unsupportedMediaType('Invalid file format. Only JPG/JPEG/PNG/WEBP files are supported.');
     const usertags = opts.usertags ?? [];
     const location = opts.location ?? null;
     let extraData = withCoauthorUserIds(opts.extraData ?? {}, opts.coauthorUserIds ?? null);
@@ -318,8 +319,8 @@ export class UploadPhotoMixin {
       caption,
       upload_id: uploadId,
       device: this.device,
-      usertags: pyJsonDumps({ in: tags }),
-      edits: { crop_original_size: [pyFloat(width), pyFloat(height)], crop_center: [pyFloat(0), pyFloat(0)], crop_zoom: pyFloat(1) },
+      usertags: jsonDumps({ in: tags }),
+      edits: { crop_original_size: [floatValue(width), floatValue(height)], crop_center: [floatValue(0), floatValue(0)], crop_zoom: floatValue(1) },
       extra: { source_width: width, source_height: height },
       ...extraData,
     };
@@ -331,13 +332,13 @@ export class UploadPhotoMixin {
     const { mentions = [], locations = [], links = [], hashtags = [], stickers = [], medias = [], polls = [], extraData = {}, resizeMode = 'fill' } = opts;
     const [uploadId, width, height] = await this.photoRupload(filePath, opts.uploadId ?? '', false, true, resizeMode);
     const previousStoryIds = await this._currentStoryIds();
-    const storyKwargs = { links, mentions, hashtags, locations, stickers, medias, polls };
+    const storyExtra = { links, mentions, hashtags, locations, stickers, medias, polls };
     for (let attempt = 0; attempt < 10; attempt++) {
       this.logger.debug(`Attempt #${attempt} to configure Photo: ${filePath}`);
       await sleep(3);
       const configured = await this.photoConfigureToStory(uploadId, width, height, caption, mentions, locations, links, hashtags, stickers, medias, polls, extraData);
       if (configured && Object.keys(configured).length) {
-        return this._extractConfiguredStoryOrRecent(configured, PhotoConfigureStoryError, 'Photo story upload', previousStoryIds, storyKwargs);
+        return this._extractConfiguredStoryOrRecent(configured, PhotoConfigureStoryError, 'Photo story upload', previousStoryIds, storyExtra);
       }
     }
     throw new PhotoConfigureStoryError({ ...this.lastJson, response: this.lastResponse });
@@ -354,7 +355,7 @@ export class UploadPhotoMixin {
   /** Upload photo and create a Cutout Sticker. bypassAi=true selects the full image. */
   async photoUploadToCutoutSticker(this: Client, filePath: string, bypassAi = true): Promise<Media> {
     const [uploadId] = await this.photoRupload(filePath);
-    const manualBox = bypassAi ? [pyFloat(0), pyFloat(0), pyFloat(1), pyFloat(1)] : null;
+    const manualBox = bypassAi ? [floatValue(0), floatValue(0), floatValue(1), floatValue(1)] : null;
     return this.mediaConfigureToCutoutSticker(uploadId, 'library', manualBox as any, !bypassAi);
   }
 
@@ -388,7 +389,7 @@ export class UploadPhotoMixin {
         '[{"font_size":40.0,"scale":1.0,"width":611.0,"height":169.0,' +
         '"x":0.51414347,"y":0.8487708,"rotation":0.0,' +
         '"format_type":"modern_refreshed_v2","effects":["default"]}]',
-      supported_capabilities_new: pyJsonDumps(config.SUPPORTED_CAPABILITIES),
+      supported_capabilities_new: jsonDumps(config.SUPPORTED_CAPABILITIES),
       has_original_sound: '1',
       camera_session_id: this.clientSessionId,
       scene_capture_type: '',
@@ -422,11 +423,11 @@ export class UploadPhotoMixin {
       original_media_type: 'photo',
       camera_entry_point: String(randomInt(25, 164)), // e.g. 25
       edits: {
-        crop_original_size: [pyFloat(width), pyFloat(height)],
+        crop_original_size: [floatValue(width), floatValue(height)],
         // "crop_center": [0.0, 0.0],
         // "crop_zoom": 1.0,
         filter_type: 0,
-        filter_strength: pyFloat(1),
+        filter_strength: floatValue(1),
       },
       extra: { source_width: width, source_height: height },
     };
@@ -438,7 +439,7 @@ export class UploadPhotoMixin {
 
   /**
    * Shared story sticker/tap-model builder used by photo and video story configure requests
-   * (mutates `data` and `storyStickerIds` exactly like the python implementation).
+   * (mutates `data` and `storyStickerIds`).
    */
   async _storyTapModels(
     this: Client,
@@ -465,14 +466,14 @@ export class UploadPhotoMixin {
             z: 0,
             width: pf(mention.width),
             height: pf(mention.height),
-            rotation: pyFloat(0),
+            rotation: floatValue(0),
             type: 'mention',
             user_id: String(mention.user.pk),
             is_sticker: false,
             display_type: 'mention_username',
           },
         ];
-        data.reel_mentions = pyJsonDumps(reelMentions);
+        data.reel_mentions = jsonDumps(reelMentions);
         tapModels.push(...reelMentions);
       }
     }
@@ -485,7 +486,7 @@ export class UploadPhotoMixin {
           z: 0,
           width: pf(mention.width),
           height: pf(mention.height),
-          rotation: pyFloat(0),
+          rotation: floatValue(0),
           type: 'hashtag',
           tag_name: mention.hashtag.name,
           is_sticker: true,
@@ -504,7 +505,7 @@ export class UploadPhotoMixin {
           z: 0,
           width: pf(mention.width),
           height: pf(mention.height),
-          rotation: pyFloat(0),
+          rotation: floatValue(0),
           type: 'location',
           location_id: this.locationStoryStickerId(mention.location),
           is_sticker: true,
@@ -557,7 +558,7 @@ export class UploadPhotoMixin {
     if (medias.length) {
       let feedMedia: StoryMedia | null = null;
       for (feedMedia of medias) {
-        pyAssert(feedMedia.media_pk, 'Required StoryMedia.media_pk');
+        ensure(feedMedia.media_pk, 'Required StoryMedia.media_pk');
         tapModels.push({
           x: pf(feedMedia.x),
           y: pf(feedMedia.y),
@@ -598,7 +599,7 @@ export class UploadPhotoMixin {
           finished: poll.finished,
           color: poll.color,
           question: poll.question,
-          tallies: poll.options.map((o: any) => ({ count: 0, font_size: pyFloat(39), text: o })),
+          tallies: poll.options.map((o: any) => ({ count: 0, font_size: floatValue(39), text: o })),
           ...pollExtra,
         });
       }

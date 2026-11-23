@@ -11,9 +11,9 @@ import {
   SubmitPhoneNumberForm,
 } from '../exceptions';
 import { Session } from '../http/session';
-import { pyRepr } from '../utils/serialization';
+import { reprValue } from '../utils/serialization';
 import { randomInt, sleep } from '../utils/timing';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 export const WAIT_SECONDS = 5;
@@ -163,7 +163,7 @@ export class ChallengeResolveMixin {
       await this._sendPrivateRequest(challengeUrl.replace(/^\/+/, ''), null, { params });
     } catch (e) {
       if (e instanceof ChallengeRequired) {
-        pyAssert(this.lastJson.message === 'challenge_required', pyRepr(this.lastJson));
+        ensure(this.lastJson.message === 'challenge_required', reprValue(this.lastJson));
         return this.challengeResolveContactForm(challengeUrl);
       }
       throw e;
@@ -256,7 +256,7 @@ export class ChallengeResolveMixin {
       }
     }
     if (!['VerifyEmailCodeForm', 'VerifySMSCodeForm', 'VerifySMSCodeFormForSMSCaptcha'].includes(result.challengeType)) {
-      throw new ChallengeError(`Unexpected contact-form challenge step after verification selection: ${pyRepr(result)}`);
+      throw new ChallengeError(`Unexpected contact-form challenge step after verification selection: ${reprValue(result)}`);
     }
     for (let retryCode = 0; retryCode < 5; retryCode++) {
       let code: string | null | undefined = null;
@@ -284,7 +284,7 @@ export class ChallengeResolveMixin {
     const challengeType = result.challengeType;
     if (challengeType === 'LegacyForceSetNewPasswordForm') this.challengeResolveNewPasswordForm(result);
     if (result.challengeType !== 'ReviewContactPointChangeForm') {
-      throw new ChallengeError(`Unexpected contact-form challenge step after security code submission: ${pyRepr(result)}`);
+      throw new ChallengeError(`Unexpected contact-form challenge step after security code submission: ${reprValue(result)}`);
     }
     const details: string[] = [];
     const extraData = result.extraData || {};
@@ -299,7 +299,7 @@ export class ChallengeResolveMixin {
     }
     // CHECK ACCOUNT DATA
     for (const detail of [this.username, this.email, this.phoneNumber]) {
-      if (detail && !details.includes(detail)) throw new ChallengeError(`ChallengeResolve: Data invalid: "${detail}" not in ${pyRepr(details)}`);
+      if (detail && !details.includes(detail)) throw new ChallengeError(`ChallengeResolve: Data invalid: "${detail}" not in ${reprValue(details)}`);
     }
     const navigation = result.navigation || {};
     const forward = navigation.forward;
@@ -317,7 +317,7 @@ export class ChallengeResolveMixin {
       })
     ).json();
     if (result.type !== 'CHALLENGE_REDIRECTION' || result.status !== 'ok') {
-      throw new ChallengeError(`Unexpected final response after contact-form approval: ${pyRepr(result)}`);
+      throw new ChallengeError(`Unexpected final response after contact-form approval: ${reprValue(result)}`);
     }
     return true;
   }
@@ -397,15 +397,15 @@ export class ChallengeResolveMixin {
           await this._sendPrivateRequest(challengeUrl, { choice: String(choice) });
         } else {
           throw new ChallengeError(
-            `ChallengeResolve: Choice "email" or "phone_number" (sms) not available to this account ${pyRepr(this.lastJson)}`,
+            `ChallengeResolve: Choice "email" or "phone_number" (sms) not available to this account ${reprValue(this.lastJson)}`,
           );
         }
       }
       const code = await this.challengeCodeOrRaised(choice, 5, 24);
       await this._sendPrivateRequest(challengeUrl, { security_code: code });
       // assert 'logged_in_user' in client.last_json
-      pyAssert((this.lastJson.action ?? '') === 'close');
-      pyAssert((this.lastJson.status ?? '') === 'ok');
+      ensure((this.lastJson.action ?? '') === 'close');
+      ensure((this.lastJson.status ?? '') === 'ok');
       return true;
     } else if (stepName === 'submit_phone') {
       const phoneNumber = this.phoneNumber;
@@ -417,7 +417,7 @@ export class ChallengeResolveMixin {
       }
       await this._sendPrivateRequest(challengeUrl, { phone_number: phoneNumber });
       if (this.lastJson.step_name === stepName) {
-        throw new ChallengeError(`submit_phone challenge did not advance after phone submission: ${pyRepr(this.lastJson)}`);
+        throw new ChallengeError(`submit_phone challenge did not advance after phone submission: ${reprValue(this.lastJson)}`);
       }
       return this.challengeResolveSimple(challengeUrl);
     } else if (this.lastJson.bloks_action === BLOKS_REDIRECT_ACTION) {
@@ -432,8 +432,8 @@ export class ChallengeResolveMixin {
       if (this.lastJson.step_name) return this.challengeResolveSimple(challengeUrl);
       return true;
     } else if (stepName === '') {
-      pyAssert((this.lastJson.action ?? '') === 'close');
-      pyAssert((this.lastJson.status ?? '') === 'ok');
+      ensure((this.lastJson.action ?? '') === 'close');
+      ensure((this.lastJson.status ?? '') === 'ok');
       return true;
     } else if (stepName === 'change_password') {
       // Example: {'step_name': 'change_password', 'step_data': {'new_password1': 'None', 'new_password2': 'None'},
@@ -446,7 +446,7 @@ export class ChallengeResolveMixin {
         withoutMessage(this.lastJson),
       );
     } else if (stepName === 'selfie_captcha') {
-      throw new ChallengeSelfieCaptcha(pyRepr(this.lastJson));
+      throw new ChallengeSelfieCaptcha(reprValue(this.lastJson));
     } else if (stepName === 'select_contact_point_recovery') {
       // {'step_name': 'select_contact_point_recovery', 'step_data': {'choice': '0', 'phone_number': '+62 ***-****-**11',
       //  'email': 'g*******b@w**.de', ...}, 'challenge_type_enum_str': 'HACKED_LOCK', 'status': 'ok'}
@@ -461,13 +461,13 @@ export class ChallengeResolveMixin {
         await this._sendPrivateRequest(challengeUrl, { choice: String(choice) });
       } else {
         throw new ChallengeError(
-          `ChallengeResolve: Choice "email" or "phone_number" (sms) not available to this account ${pyRepr(this.lastJson)}`,
+          `ChallengeResolve: Choice "email" or "phone_number" (sms) not available to this account ${reprValue(this.lastJson)}`,
         );
       }
       const code = await this.challengeCodeOrRaised(choice, 5, 24);
       await this._sendPrivateRequest(challengeUrl, { security_code: code });
       if ((this.lastJson.action ?? '') === 'close') {
-        pyAssert((this.lastJson.status ?? '') === 'ok');
+        ensure((this.lastJson.status ?? '') === 'ok');
         return true;
       }
       // last form to verify account details
@@ -481,7 +481,7 @@ export class ChallengeResolveMixin {
       return true;
     } else {
       throw new ChallengeUnknownStep(
-        `ChallengeResolve: Unknown step_name "${stepName}" for "${this.username}" in challenge resolver: ${pyRepr(this.lastJson)}`,
+        `ChallengeResolve: Unknown step_name "${stepName}" for "${this.username}" in challenge resolver: ${reprValue(this.lastJson)}`,
       );
     }
   }

@@ -1,7 +1,7 @@
 import { CollectionNotFound } from '../exceptions';
 import { extractCollection, extractMediaV1 } from '../extractors';
 import { Collection, Media } from '../types';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import type { Client } from '../client';
 
 /** Helpers for collection */
@@ -85,7 +85,7 @@ export class CollectionMixin {
 
   /** Save a media to collection (revert=true to unsave) */
   async mediaSave(this: Client, mediaId: string | number, collectionPk: string | number | null = null, revert = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const pk = this.mediaPk(mediaId);
     const data: Record<string, any> = { module_name: 'feed_timeline', radio_type: 'wifi-none' };
     if (collectionPk) data.added_collection_ids = `[${BigInt(String(collectionPk))}]`;

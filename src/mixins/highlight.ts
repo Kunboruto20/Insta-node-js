@@ -1,8 +1,9 @@
+import * as Boom from '@hapi/boom';
 import * as config from '../config';
 import { HighlightNotFound } from '../exceptions';
 import { extractHighlightV1 } from '../extractors';
 import { Highlight } from '../types';
-import { dumps, pyJsonDumps } from '../utils/serialization';
+import { dumps, jsonDumps } from '../utils/serialization';
 import { randomInt } from '../utils/timing';
 import { vassert } from '../utils/validation';
 import type { Client } from '../client';
@@ -13,7 +14,7 @@ export class HighlightMixin {
     vassert(url.includes('/highlights/'), "URL must contain '/highlights/'");
     const p = new URL(url, 'http://placeholder').pathname;
     const parts = p.split('/').filter((x) => x && /^\d+$/.test(x));
-    if (!parts.length) throw new RangeError('list index out of range');
+    if (!parts.length) throw Boom.badRequest('Invalid highlight URL');
     return String(parts[0]);
   }
 
@@ -22,7 +23,7 @@ export class HighlightMixin {
     amount = Math.trunc(amount);
     const id = BigInt(String(userId)).toString();
     const params = {
-      supported_capabilities_new: pyJsonDumps(config.SUPPORTED_CAPABILITIES),
+      supported_capabilities_new: jsonDumps(config.SUPPORTED_CAPABILITIES),
       phone_id: this.phoneId,
       battery_level: randomInt(25, 100),
       panavision_mode: '',
@@ -46,7 +47,7 @@ export class HighlightMixin {
     const highlightId = `highlight:${highlightPk}`;
     const data = {
       exclude_media_ids: '[]',
-      supported_capabilities_new: pyJsonDumps(config.SUPPORTED_CAPABILITIES),
+      supported_capabilities_new: jsonDumps(config.SUPPORTED_CAPABILITIES),
       source: 'profile',
       _uid: String(this.userId),
       _uuid: this.uuid,
@@ -75,12 +76,12 @@ export class HighlightMixin {
     const mediaIds: string[] = [];
     for (const sid of storyIds) mediaIds.push(await this.mediaId(sid));
     const data = {
-      supported_capabilities_new: pyJsonDumps(config.SUPPORTED_CAPABILITIES),
+      supported_capabilities_new: jsonDumps(config.SUPPORTED_CAPABILITIES),
       source: 'self_profile',
       creation_id: String(Math.trunc(Date.now() / 1000)),
       _uid: String(this.userId),
       _uuid: this.uuid,
-      cover: dumps({ media_id: await this.mediaId(coverStoryId), crop_rect: pyCropRect(cropRect) }),
+      cover: dumps({ media_id: await this.mediaId(coverStoryId), crop_rect: formatCropRect(cropRect) }),
       title,
       media_ids: dumps(mediaIds),
     };
@@ -97,7 +98,7 @@ export class HighlightMixin {
     removedMediaIds: string[] = [],
   ): Promise<Highlight> {
     const data: Record<string, any> = {
-      supported_capabilities_new: pyJsonDumps(config.SUPPORTED_CAPABILITIES),
+      supported_capabilities_new: jsonDumps(config.SUPPORTED_CAPABILITIES),
       source: 'self_profile',
       _uid: String(this.userId),
       _uuid: this.uuid,
@@ -138,7 +139,7 @@ export class HighlightMixin {
   }
 }
 
-/** python dumps() of a float list keeps the ".0" suffix (e.g. [0.0,0.21830457,1.0,0.78094524]) */
-function pyCropRect(rect: number[]): string {
+/** Serialize a float list keeping the ".0" suffix (e.g. [0.0,0.21830457,1.0,0.78094524]) */
+function formatCropRect(rect: number[]): string {
   return '[' + rect.map((n) => (Number.isInteger(n) ? `${n}.0` : String(n))).join(',') + ']';
 }

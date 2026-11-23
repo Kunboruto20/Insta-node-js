@@ -15,7 +15,7 @@ import { RealtimeClient } from '../src/realtime/client';
 import { FbnsClient, FbnsDeviceAuth } from '../src/realtime/fbns';
 import { Client } from '../src/client';
 
-// Reference values produced by the original Python implementation.
+// Known-good reference encodings.
 const CONNECT_THRIFT =
   '18146162636465666768696a6b6c6d6e6f70717273743c168eaedad68b95ee2b1805554120c89b16ee021600150212111803646576111502150016feffffff1f29f512b0018e02aa02ac028a02a402b0018e02aa02ac028a02a402b0018e02aa02ac028a02a402180b636f6f6b69655f6175746816d6c983f9d4ef810248001303560100180b73657373696f6e69643d785b028801610162015802c3bc00';
 
@@ -48,7 +48,7 @@ function sampleConnection(): MQTToTConnection {
   );
 }
 
-test('thrift connect payload matches python byte-for-byte', () => {
+test('thrift connect payload matches reference byte-for-byte', () => {
   const t = sampleConnection().toThrift();
   assert.equal(t.toString('hex'), CONNECT_THRIFT);
   const back = readThriftObject(t, MQTToTConnection.thriftDescriptors());
@@ -58,7 +58,7 @@ test('thrift connect payload matches python byte-for-byte', () => {
   assert.deepEqual(back.appSpecificInfo, { a: 'b', X: 'ü' });
 });
 
-test('foreground state / publish / subscribe packets match python', () => {
+test('foreground state / publish / subscribe packets match reference', () => {
   const st = { inForegroundApp: true, keepAliveTimeout: -60, subscribeTopics: ['a', 'b'], requestId: -5 };
   assert.equal(writeThriftObject(st, RealtimeClient.foregroundStateDescriptors()).toString('hex'), '112577192801610162460900');
   const pub = writePublishPacket('132', Buffer.alloc(200, 'x'), 1, 7);

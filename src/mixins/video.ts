@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { existsSync, mkdtempSync, promises as fsp, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -22,11 +23,11 @@ import {
   makeStorySticker,
 } from '../types';
 import { FfmpegUnavailableError, ffmpeg, probe } from '../utils/ffmpeg';
-import { dumps, pyFloat } from '../utils/serialization';
+import { dumps, floatValue } from '../utils/serialization';
 import { dateTimeOriginal, randomInt, sleep } from '../utils/timing';
 import { withCoauthorUserIds } from '../utils/upload';
-import { MOVIEPY_2_INSTALL_MESSAGE, analyzeVideoForUpload } from '../utils/video';
-import { pyAssert } from '../utils/validation';
+import { FFMPEG_INSTALL_MESSAGE, analyzeVideoForUpload } from '../utils/video';
+import { ensure } from '../utils/validation';
 import { pf, round7, PhotoUploadOptions, StoryMusicOptions, StoryUploadOptions } from './photo';
 import type { Client } from '../client';
 
@@ -49,7 +50,7 @@ export class DownloadVideoMixin {
   /** Download video using media pk */
   async videoDownload(this: Client, mediaPk: string | number, folder = '', overwrite = true): Promise<string> {
     const media = await this.mediaInfoV1(mediaPk);
-    pyAssert(media.media_type === 2, 'Must been video');
+    ensure(media.media_type === 2, 'Must been video');
     const filename = `${media.user.username}_${mediaPk}`;
     return this.videoDownloadByUrl(String(media.video_url), filename, folder, overwrite);
   }
@@ -83,7 +84,7 @@ export class UploadVideoMixin {
       this._trackValue(track, 'progressive_download_url') ||
       this._trackValue(track, 'fast_start_progressive_download_url') ||
       this._trackValue(track, 'reactive_audio_download_url');
-    pyAssert(
+    ensure(
       trackUrl,
       'track.uri, track.progressive_download_url, track.fast_start_progressive_download_url or track.reactive_audio_download_url is required',
     );
@@ -123,7 +124,7 @@ export class UploadVideoMixin {
       }
       return mediaDuration;
     } catch (e) {
-      if (e instanceof FfmpegUnavailableError) throw new Error(`story upload with music requires ffmpeg. ${MOVIEPY_2_INSTALL_MESSAGE}`);
+      if (e instanceof FfmpegUnavailableError) throw Boom.failedDependency(`story upload with music requires ffmpeg. ${FFMPEG_INSTALL_MESSAGE}`);
       throw e;
     }
   }
@@ -146,8 +147,8 @@ export class UploadVideoMixin {
   ): Record<string, any> {
     let audioAssetId = this._trackValue(track, 'audio_asset_id') || this._trackValue(track, 'id');
     let audioClusterId = this._trackValue(track, 'audio_cluster_id');
-    pyAssert(audioAssetId, 'track.audio_asset_id or track.id is required');
-    pyAssert(audioClusterId, 'track.audio_cluster_id is required');
+    ensure(audioAssetId, 'track.audio_asset_id or track.id is required');
+    ensure(audioClusterId, 'track.audio_cluster_id is required');
     if (audioAssetStartTime === null || audioAssetStartTime === undefined) audioAssetStartTime = this._trackHighlightStart(track);
     audioAssetId = String(audioAssetId);
     audioClusterId = String(audioClusterId);
@@ -181,12 +182,12 @@ export class UploadVideoMixin {
     const mediaAudioOverlayInfo: Record<string, any> = { ...(edits.media_audio_overlay_info || {}) };
     Object.assign(mediaAudioOverlayInfo, {
       audio_mix_burned_in: true,
-      video_volume: pyFloat(originalVolume),
+      video_volume: floatValue(originalVolume),
       media_audio_overlays: [
         {
           audio_asset_id: audioAssetId,
           audio_overlay_uuid: audioOverlayUuid,
-          audio_volume: pyFloat(musicVolume),
+          audio_volume: floatValue(musicVolume),
           seek_time_ms: Math.trunc(audioAssetStartTime),
           start_at_time_ms: 0,
           audio_duration_ms: Math.trunc(overlapDuration),
@@ -249,7 +250,7 @@ export class UploadVideoMixin {
     toStory = false,
     toDirect = false,
   ): Promise<[string, number, number, number, string]> {
-    pyAssert(typeof filePath === 'string', `Path must been Path, now ${filePath} (${typeof filePath})`);
+    ensure(typeof filePath === 'string', `Path must been Path, now ${filePath} (${typeof filePath})`);
     const uploadId = String(Date.now());
     const [width, height, duration, thumb] = await analyzeVideo(filePath, thumbnail);
     const waterfallId = this.generateUuid();
@@ -327,7 +328,7 @@ export class UploadVideoMixin {
   async videoUploadToCutoutSticker(this: Client, filePath: string, bypassAi = true): Promise<Media> {
     // videoRupload returns (upload_id, width, height, duration, thumbnail)
     const res = await this.videoRupload(filePath);
-    const manualBox = bypassAi ? [pyFloat(0), pyFloat(0), pyFloat(1), pyFloat(1)] : null;
+    const manualBox = bypassAi ? [floatValue(0), floatValue(0), floatValue(1), floatValue(1)] : null;
     return this.mediaConfigureToCutoutSticker(res[0], 'library', manualBox as any, !bypassAi);
   }
 
@@ -371,7 +372,7 @@ export class UploadVideoMixin {
   /** Upload video as a story and configure it. resizeMode "fit" renders a 720x1280 canvas without cropping. */
   async videoUploadToStory(this: Client, filePath: string, caption = '', opts: StoryUploadOptions & { thumbnail?: string | null } = {}): Promise<Story> {
     const { mentions = [], locations = [], links = [], hashtags = [], stickers = [], medias = [], polls = [], extraData = {}, resizeMode = 'fill' } = opts;
-    if (resizeMode !== 'fill' && resizeMode !== 'fit') throw new Error('resize_mode must be "fill" or "fit"');
+    if (resizeMode !== 'fill' && resizeMode !== 'fit') throw Boom.badRequest('resizeMode must be "fill" or "fit"');
     let renderedStory: { path: string; paths: string[] } | null = null;
     let uploadPath = filePath;
     let uploadThumbnail = opts.thumbnail ?? null;
@@ -383,7 +384,7 @@ export class UploadVideoMixin {
       }
       const [uploadId, width, height, duration, thumbnail] = await this.videoRupload(uploadPath, uploadThumbnail, false, true);
       const previousStoryIds = await this._currentStoryIds();
-      const storyKwargs = { links, mentions, hashtags, locations, stickers, medias, polls };
+      const storyExtra = { links, mentions, hashtags, locations, stickers, medias, polls };
       for (let attempt = 0; attempt < 50; attempt++) {
         this.logger.debug(`Attempt #${attempt} to configure Video: ${filePath}`);
         await sleep(3);
@@ -400,7 +401,7 @@ export class UploadVideoMixin {
           throw e;
         }
         if (configured && Object.keys(configured).length) {
-          return this._extractConfiguredStoryOrRecent(configured, VideoConfigureStoryError, 'Video story upload', previousStoryIds, storyKwargs);
+          return this._extractConfiguredStoryOrRecent(configured, VideoConfigureStoryError, 'Video story upload', previousStoryIds, storyExtra);
         }
       }
       throw new VideoConfigureStoryError({ ...this.lastJson, response: this.lastResponse });
@@ -450,7 +451,7 @@ export class UploadVideoMixin {
     threadIds = [...threadIds];
     const storyStickerIds: string[] = [];
     const data: Record<string, any> = {
-      // USE extraData TO EXTEND THE SETTINGS OF THE LOADED STORY (see python docs for direct/segment-mode properties)
+      // USE extraData TO EXTEND THE SETTINGS OF THE LOADED STORY (direct/segment-mode properties)
       _uid: String(this.userId),
       supported_capabilities_new: dumps(config.SUPPORTED_CAPABILITIES),
       has_original_sound: '1',
@@ -500,7 +501,7 @@ export class UploadVideoMixin {
           z: 0,
           width: pf(mention.width),
           height: pf(mention.height),
-          rotation: pyFloat(0),
+          rotation: floatValue(0),
           type: 'mention',
           user_id: String(mention.user.pk),
           is_sticker: false,
@@ -509,13 +510,13 @@ export class UploadVideoMixin {
           tap_state_str_id: 'mention_text',
         });
         textMetadata.push({
-          font_size: pyFloat(24),
-          scale: pyFloat(1),
-          width: pyFloat(366),
-          height: pyFloat(102),
+          font_size: floatValue(24),
+          scale: floatValue(1),
+          width: floatValue(366),
+          height: floatValue(102),
           x: pf(mention.x),
           y: pf(mention.y),
-          rotation: pyFloat(0),
+          rotation: floatValue(0),
         });
       }
       data.text_metadata = dumps(textMetadata);
@@ -531,7 +532,7 @@ export class UploadVideoMixin {
           z: 0,
           width: pf(mention.width),
           height: pf(mention.height),
-          rotation: pyFloat(0),
+          rotation: floatValue(0),
           type: 'hashtag',
           tag_name: mention.hashtag.name,
           is_sticker: true,
@@ -550,7 +551,7 @@ export class UploadVideoMixin {
           z: 0,
           width: pf(mention.width),
           height: pf(mention.height),
-          rotation: pyFloat(0),
+          rotation: floatValue(0),
           type: 'location',
           location_id: this.locationStoryStickerId(mention.location),
           is_sticker: true,
@@ -603,7 +604,7 @@ export class UploadVideoMixin {
     if (medias.length) {
       let feedMedia: StoryMedia | null = null;
       for (feedMedia of medias) {
-        pyAssert(feedMedia.media_pk, 'Required StoryMedia.media_pk');
+        ensure(feedMedia.media_pk, 'Required StoryMedia.media_pk');
         tapModels.push({
           x: pf(feedMedia.x),
           y: pf(feedMedia.y),
@@ -644,7 +645,7 @@ export class UploadVideoMixin {
           finished: poll.finished,
           color: poll.color,
           question: poll.question,
-          tallies: poll.options.map((o: any) => ({ count: 0, font_size: pyFloat(39), text: o })),
+          tallies: poll.options.map((o: any) => ({ count: 0, font_size: floatValue(39), text: o })),
           ...pollExtra,
         });
       }

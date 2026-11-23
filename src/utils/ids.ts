@@ -1,7 +1,9 @@
+import * as Boom from '@hapi/boom';
+
 export class InstagramIdCodec {
   static ENCODING_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
-  /** Covert a numeric value to a shortcode. */
+  /** Convert a numeric value to a shortcode. */
   static encode(num: string | number | bigint, alphabet: string = InstagramIdCodec.ENCODING_CHARS): string {
     let n = BigInt(num);
     if (n === 0n) return alphabet[0];
@@ -22,7 +24,7 @@ export class InstagramIdCodec {
     let num = 0n;
     for (const char of shortcode) {
       const idx = alphabet.indexOf(char);
-      if (idx < 0) throw new Error(`ValueError: substring not found (${char})`);
+      if (idx < 0) throw Boom.badRequest(`Invalid character in media code: ${char}`);
       num = num * base + BigInt(idx);
     }
     return num.toString();

@@ -17,8 +17,8 @@ export interface Logger {
 
 const LEVELS: Record<string, number> = { debug: 10, info: 20, warning: 30, error: 40, silent: 100 };
 
-/** Python-style %s formatting used by logging calls. */
-export function pyFormat(fmt: unknown, args: any[]): string {
+/** printf-style %s / %d formatting used by logging calls. */
+export function formatString(fmt: unknown, args: any[]): string {
   if (typeof fmt !== 'string' || !args.length) return [fmt, ...args].map((a) => (typeof a === 'string' ? a : safeStr(a))).join(' ');
   let i = 0;
   const out = fmt.replace(/%[sdrf]/g, () => (i < args.length ? safeStr(args[i++]) : ''));
@@ -35,7 +35,7 @@ function safeStr(a: any): string {
   }
 }
 
-/** Minimal logger compatible with python logging.Logger call style. Silent unless level configured. */
+/** Minimal leveled logger (debug/info/warning/error). Silent unless a level is configured. */
 export class SimpleLogger implements Logger {
   level: number;
   constructor(public name: string, level: keyof typeof LEVELS | number = (process.env.INSTA_NODE_LOG_LEVEL as any) || 'warning') {
@@ -47,7 +47,7 @@ export class SimpleLogger implements Logger {
   private log(lvl: number, tag: string, args: any[]) {
     if (lvl < this.level) return;
     const [fmt, ...rest] = args;
-    const line = `${new Date().toISOString()} ${tag} ${this.name}: ${pyFormat(fmt, rest)}`;
+    const line = `${new Date().toISOString()} ${tag} ${this.name}: ${formatString(fmt, rest)}`;
     if (lvl >= 30) console.error(line);
     else console.log(line);
   }

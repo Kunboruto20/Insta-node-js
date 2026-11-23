@@ -1,10 +1,10 @@
 import * as path from 'node:path';
 import { AlbumConfigureError, AlbumNotDownload, AlbumUnknownFormat } from '../exceptions';
 import { Location, Media, Track, Usertag } from '../types';
-import { dumps, pyFloat } from '../utils/serialization';
+import { dumps, floatValue } from '../utils/serialization';
 import { dateTimeOriginal, sleep } from '../utils/timing';
 import { withCoauthorUserIds } from '../utils/upload';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { CrosspostingOptions } from './crossposting';
 import { pf } from './photo';
 import type { Client } from '../client';
@@ -34,7 +34,7 @@ export class DownloadAlbumMixin {
   /** Download your album. Returns list of paths */
   async albumDownload(this: Client, mediaPk: string | number, folder = '', overwrite = true): Promise<string[]> {
     const media = await this.mediaInfo(mediaPk);
-    pyAssert(media.media_type === 8, 'Must been album');
+    ensure(media.media_type === 8, 'Must been album');
     const paths: string[] = [];
     for (const resource of media.resources) {
       const filename = `${media.user.username}_${resource.pk}`;
@@ -62,7 +62,7 @@ export class DownloadAlbumMixin {
   /** Download your album as bytes */
   async albumDownloadOrigin(this: Client, mediaPk: string | number): Promise<Buffer[]> {
     const media = await this.mediaInfo(mediaPk);
-    pyAssert(media.media_type === 8, 'Must been album');
+    ensure(media.media_type === 8, 'Must been album');
     const files: Buffer[] = [];
     for (const resource of media.resources) {
       if (resource.media_type === 1) files.push(await this.photoDownloadByUrlOrigin(String(resource.thumbnail_url)));
@@ -94,7 +94,7 @@ export class UploadAlbumMixin {
         const [uploadId, width, height] = await this.photoRupload(p, '', true);
         children.push({
           upload_id: uploadId,
-          edits: dumps({ crop_original_size: [width, height], crop_center: [pyFloat(0), pyFloat(-0)], crop_zoom: pyFloat(1) }),
+          edits: dumps({ crop_original_size: [width, height], crop_center: [floatValue(0), floatValue(-0)], crop_zoom: floatValue(1) }),
           extra: dumps({ source_width: width, source_height: height }),
           scene_capture_type: '',
           scene_type: null,

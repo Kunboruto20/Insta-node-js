@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { randomUUID } from 'node:crypto';
 import { LoginRequired, SecondaryAccountError } from '../exceptions';
 import { extractUserShort } from '../extractors';
@@ -27,11 +28,11 @@ export class MultipleAccountsMixin {
   async createSecondaryAccount(this: Client, username: string, opts: { linkToMainAccount?: boolean } = {}): Promise<SecondaryAccount> {
     const linkToMainAccount = opts.linkToMainAccount ?? true;
     if (typeof username !== 'string' || !/^[A-Za-z0-9_.]{1,30}$/.test(username)) {
-      throw new Error('username must contain 1-30 ASCII letters, digits, underscores or periods');
+      throw Boom.badRequest('username must contain 1-30 ASCII letters, digits, underscores or periods');
     }
-    if (linkToMainAccount !== true) throw new Error('Only linked Accounts Center creation is supported');
+    if (linkToMainAccount !== true) throw Boom.notImplemented('Only linked Accounts Center creation is supported');
     const timeout = this.readTimeout;
-    if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout <= 0) throw new Error('read_timeout must be a finite positive number');
+    if (typeof timeout !== 'number' || !Number.isFinite(timeout) || timeout <= 0) throw Boom.badRequest('readTimeout must be a finite positive number');
     const parentId = String(this.userId || '');
     const parentAuth = this.authorization;
     if (!parentId || !parentAuth) throw new LoginRequired('An authenticated main account is required');

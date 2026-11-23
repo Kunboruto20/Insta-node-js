@@ -1,3 +1,5 @@
+import { isInvalidInput } from '../errors';
+import * as Boom from '@hapi/boom';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import * as config from '../config';
@@ -17,7 +19,7 @@ import {
 import { CookieJar } from '../http/session';
 import { ModelValidationError, UserShort, makeUserShort } from '../types';
 import { genToken, generateJazoest } from '../utils/auth';
-import { deepcopy, dumps, pyInt, pyJsonDumps } from '../utils/serialization';
+import { deepcopy, dumps, intValue, jsonDumps } from '../utils/serialization';
 import { now, randomChoice, randomInt } from '../utils/timing';
 import type { Client } from '../client';
 
@@ -28,8 +30,8 @@ function isDict(v: any): v is Record<string, any> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-/** Python str() of a number that may be int or float */
-export function pyNumStr(n: number, isFloat: boolean): string {
+/** Format a number as an integer string, or with a decimal part when `isFloat` */
+export function numberString(n: number, isFloat: boolean): string {
   if (!isFloat) return String(n);
   if (Number.isInteger(n)) return `${n}.0`;
   return String(n);
@@ -113,7 +115,7 @@ export class PostLoginFlowMixin {
     // reason = "pull_to_refresh" if chance else "cold_start"
     checkFlow.push(await this.getReelsTrayFeed('cold_start'));
     checkFlow.push(await this.getTimelineFeed(['cold_start_fetch'] as any));
-    return checkFlow.every((v) => pyTruthy(v));
+    return checkFlow.every((v) => isTruthy(v));
   }
 
   _timelineMediaId(this: Client, media: Record<string, any>): string {
@@ -172,10 +174,10 @@ export class PostLoginFlowMixin {
   _timelineFeedViewInfoJson(this: Client, feedViewInfo: string | Record<string, any>[] | null | undefined, seenPosts: string): string {
     if (feedViewInfo !== null && feedViewInfo !== undefined) {
       if (typeof feedViewInfo === 'string') return feedViewInfo;
-      return pyJsonDumps(feedViewInfo).replace(/"media_pct": 1(?=[,}])/g, '"media_pct": 1.0');
+      return jsonDumps(feedViewInfo).replace(/"media_pct": 1(?=[,}])/g, '"media_pct": 1.0');
     }
     if (!seenPosts) return '[]';
-    return pyJsonDumps(this._timelineFeedViewInfo(seenPosts.split(','))).replace(/"media_pct": 1(?=[,}])/g, '"media_pct": 1.0');
+    return jsonDumps(this._timelineFeedViewInfo(seenPosts.split(','))).replace(/"media_pct": 1(?=[,}])/g, '"media_pct": 1.0');
   }
 
   _timelineSessionLevelSignalsJson(this: Client): string {
@@ -285,7 +287,7 @@ export class PostLoginFlowMixin {
     data.feed_view_info = this._timelineFeedViewInfoJson(feedViewInfo, seenPostsValue);
     // if "push_disabled" in options: data["push_disabled"] = "true"
     // if "recovered_from_crash" in options: data["recovered_from_crash"] = "1"
-    const result = await this.privateRequest('feed/timeline/', pyJsonDumps(data), { withSignature: false, headers });
+    const result = await this.privateRequest('feed/timeline/', jsonDumps(data), { withSignature: false, headers });
     this._rememberTimelineSeenPosts(result);
     return result;
   }
@@ -309,7 +311,7 @@ export class PostLoginFlowMixin {
   }
 }
 
-export function pyTruthy(v: any): boolean {
+export function isTruthy(v: any): boolean {
   if (v === null || v === undefined || v === false || v === 0 || v === '') return false;
   if (Array.isArray(v)) return v.length > 0;
   if (v instanceof Map || v instanceof Set) return v.size > 0;
@@ -352,15 +354,15 @@ export class LoginMixin {
   _findLoginResponseValue(this: Client, data: any, key: string): any {
     if (isDict(data)) {
       const value = data[key];
-      if (pyTruthy(value)) return value;
+      if (isTruthy(value)) return value;
       for (const child of Object.values(data)) {
         const v = this._findLoginResponseValue(child, key);
-        if (pyTruthy(v)) return v;
+        if (isTruthy(v)) return v;
       }
     } else if (Array.isArray(data)) {
       for (const child of data) {
         const v = this._findLoginResponseValue(child, key);
-        if (pyTruthy(v)) return v;
+        if (isTruthy(v)) return v;
       }
     }
     return null;
@@ -529,9 +531,9 @@ export class LoginMixin {
 
   /** Login using session id */
   async loginBySessionid(this: Client, sessionid: string): Promise<boolean> {
-    if (!(typeof sessionid === 'string' && sessionid.length > 30)) throw new Error('Invalid sessionid');
+    if (!(typeof sessionid === 'string' && sessionid.length > 30)) throw Boom.badRequest('Invalid sessionid');
     const userMatch = sessionid.match(/^\d+/);
-    if (!userMatch) throw new Error('Invalid sessionid');
+    if (!userMatch) throw Boom.badRequest('Invalid sessionid');
     this.settings.cookies = { sessionid };
     this.init();
     const userId = userMatch[0];
@@ -544,7 +546,7 @@ export class LoginMixin {
       try {
         user = await this._userShortFromPrivateStream(userId);
       } catch (e2) {
-        if (!(e2 instanceof ClientError || e2 instanceof ModelValidationError || e2 instanceof TypeError)) throw e2;
+        if (!(e2 instanceof ClientError || e2 instanceof ModelValidationError || isInvalidInput(e2))) throw e2;
         user = await this.userShortGql(userId);
       }
     }
@@ -630,7 +632,7 @@ export class LoginMixin {
             if (exc instanceof ClientError) {
               exc.caa_initial_outcome = initialOutcome;
               exc.caa_initial_response = initialResponse;
-              exc.add_note(
+              exc.addNote(
                 'The initial CAA attempt returned no session. Its private response is retained ' +
                   'in caa_initial_outcome/caa_initial_response; the later error may describe ' +
                   'a different login stage. Do not publish these raw attributes.',
@@ -777,7 +779,7 @@ export class LoginMixin {
         throw exc;
       }
     }
-    if (pyTruthy(logged)) {
+    if (isTruthy(logged)) {
       await this.loginFlow();
       this.lastLogin = now();
       this.reloginAttempt = 0;
@@ -812,7 +814,7 @@ export class LoginMixin {
   get sessionid(): string | undefined {
     const self = this as unknown as Client;
     let sessionid = self.cookieDict.sessionid;
-    if (!sessionid && pyTruthy(self.authorizationData)) sessionid = self.authorizationData.sessionid;
+    if (!sessionid && isTruthy(self.authorizationData)) sessionid = self.authorizationData.sessionid;
     return sessionid;
   }
 
@@ -832,16 +834,16 @@ export class LoginMixin {
   get userId(): string | null {
     const self = this as unknown as Client;
     let userId: any = self.cookieDict.ds_user_id;
-    if (!userId && pyTruthy(self.authorizationData)) userId = self.authorizationData.ds_user_id;
+    if (!userId && isTruthy(self.authorizationData)) userId = self.authorizationData.ds_user_id;
     if (userId) return BigInt(String(userId).trim()).toString();
     return null;
   }
 
-  /** user id as python int (number, or BigInt beyond the safe range) — used where python serializes the int */
+  /** user id as an integer (number, or BigInt beyond the safe range) — used where the API expects a numeric id */
   get userIdInt(): number | bigint | null {
     const self = this as unknown as Client;
     const id = self.userId;
-    return id === null ? null : pyInt(id);
+    return id === null ? null : intValue(id);
   }
 
   get device(): Record<string, any> {
@@ -900,9 +902,9 @@ export class LoginMixin {
     } else if (this.settings && this.settings.fbns_auth !== undefined && this.settings.fbns_auth !== null) {
       fbnsAuth = deepcopy(this.settings.fbns_auth);
     }
-    if (pyTruthy(fbnsAuth)) settings.fbns_auth = fbnsAuth;
+    if (isTruthy(fbnsAuth)) settings.fbns_auth = fbnsAuth;
     const usdidSettings = this.getUsdidSettings();
-    if (pyTruthy(usdidSettings)) settings.usdid = usdidSettings;
+    if (isTruthy(usdidSettings)) settings.usdid = usdidSettings;
     return settings;
   }
 
@@ -927,7 +929,7 @@ export class LoginMixin {
 
   /** Serialize and save session settings */
   async dumpSettings(this: Client, filePath: string): Promise<boolean> {
-    await fsp.writeFile(filePath, pyJsonIndent(this.getSettings()));
+    await fsp.writeFile(filePath, jsonIndent(this.getSettings()));
     return true;
   }
 
@@ -947,9 +949,9 @@ export class LoginMixin {
       sessionRetryTotal?: number | null;
       sessionRetryBackoffFactor?: number | null;
       sessionRetryStatuses?: number[] | null;
-      publicTransport?: 'requests' | 'curl' | null;
+      publicTransport?: 'http1' | 'http2' | null;
       publicTransportImpersonate?: string | null;
-      privateTransport?: 'requests' | 'curl' | 'utls' | null;
+      privateTransport?: 'http1' | 'http2' | 'mobile' | null;
     } = {},
   ): boolean {
     let privateTransport = opts.privateTransport ?? null;
@@ -998,7 +1000,7 @@ export class LoginMixin {
     device = device || {};
     this.deviceSettings = { ...config.DEVICE_SETTINGS, ...device };
     let seed: string | null = null;
-    if (pyTruthy(this.settings)) {
+    if (isTruthy(this.settings)) {
       const uuids = this.settings.uuids || {};
       seed = uuids.uuid ?? null;
     }
@@ -1011,8 +1013,8 @@ export class LoginMixin {
   /** Helper to set app version settings (version string or settings dict) */
   setApp(this: Client, app: string | Record<string, any> | null = null, seed: string | null = null, hydrateIncompleteProfile = false): boolean {
     const appKeys = ['app_version', 'version_code', 'bloks_versioning_id'];
-    if (!pyTruthy(this.deviceSettings)) this.deviceSettings = { ...config.DEVICE_SETTINGS };
-    if (!Object.keys(config.APP_SETTINGS).length) throw new Error('APP_SETTINGS is empty');
+    if (!isTruthy(this.deviceSettings)) this.deviceSettings = { ...config.DEVICE_SETTINGS };
+    if (!Object.keys(config.APP_SETTINGS).length) throw Boom.internal('APP_SETTINGS is empty');
     const overrideAppVersion = Boolean(this.overrideAppVersion);
     const applySettings = (appSettings: Record<string, any>) => {
       for (const key of appKeys) {
@@ -1032,7 +1034,7 @@ export class LoginMixin {
     const defaultSettings = () => config.APP_SETTINGS[config.DEFAULT_APP_VERSION] || pickBySeed();
     const isCurrentOrNewerAppVersion = (value: any): boolean => {
       const parse = (v: string) => v.split('.').map((p) => {
-        if (!/^\s*[+-]?\d+\s*$/.test(p)) throw new Error('ValueError');
+        if (!/^\s*[+-]?\d+\s*$/.test(p)) throw Boom.badRequest(`Invalid version number: ${p}`);
         return parseInt(p, 10);
       });
       try {
@@ -1051,7 +1053,7 @@ export class LoginMixin {
     if (app) {
       if (typeof app === 'string') {
         const matched = config.APP_SETTINGS[app];
-        if (!matched) throw new Error(`Unknown app_version: ${app}`);
+        if (!matched) throw Boom.badRequest(`Unknown app version: ${app}`);
         applySettings(matched);
       } else applySettings({ ...app });
     } else {
@@ -1148,10 +1150,10 @@ export class LoginMixin {
     const dt = Date.now();
     const timeElapsed = randomInt(500, 1500) + size * randomInt(500, 1500);
     const divided = size / randomInt(3, 5);
-    const count = divided > 1 ? pyNumStr(divided, true) : '1';
+    const count = divided > 1 ? numberString(divided, true) : '1';
     const data = `${size} ${timeElapsed} ${count} ${dt}`;
     const sig = createHmac('sha256', Buffer.from(key, 'ascii')).update(Buffer.from(data, 'ascii')).digest('base64');
-    // python formats bytes objects with "{!s}" → b'...'
+    // the breadcrumb payload embeds the bytes literal form b'...'
     return `b'${sig}'\nb'${Buffer.from(data, 'ascii').toString('base64')}'\n`;
   }
 
@@ -1198,7 +1200,7 @@ export class LoginMixin {
   /** Build authorization header. Example: Bearer IGT:2:eaW9u.....aWQiOiI0NzM5= */
   get authorization(): string {
     const self = this as unknown as Client;
-    if (pyTruthy(self.authorizationData)) {
+    if (isTruthy(self.authorizationData)) {
       const b64part = Buffer.from(dumps(self.authorizationData)).toString('base64');
       return `Bearer IGT:2:${b64part}`;
     }
@@ -1224,6 +1226,6 @@ export class LoginMixin {
 }
 
 /** json.dump(..., indent=4) equivalent */
-export function pyJsonIndent(data: any): string {
+export function jsonIndent(data: any): string {
   return JSON.stringify(data, null, 4).replace(/[\u007f-￿]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 }

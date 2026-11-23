@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import {
   About, Account, Broadcast, Collection, Comment, DirectMedia, DirectMessage, DirectResponse, DirectShortThread,
   DirectThread, Guide, Hashtag, Highlight, Location, Media, MediaOembed, MediaXma, ReplyMessage, Resource, Story,
@@ -9,8 +10,8 @@ import {
   makeUser, makeUserShort, makeUsertag, makeViewer,
 } from './types';
 import { InstagramIdCodec } from './utils/ids';
-import { deepcopy, htmlUnescape, jsonValue, pyJsonDumps, pyRepr } from './utils/serialization';
-import { pyAssert } from './utils/validation';
+import { deepcopy, htmlUnescape, jsonValue, jsonDumps, reprValue } from './utils/serialization';
+import { ensure } from './utils/validation';
 
 export const MEDIA_TYPES_GQL: Record<string, number> = { GraphImage: 1, GraphVideo: 2, GraphSidecar: 8, StoryVideo: 2 };
 export const XDT_MEDIA_TYPES_GQL: Record<string, string> = {
@@ -37,7 +38,7 @@ function truthy(v: any): boolean {
 /** sorted(items, key=...)[-1] */
 function maxBy<T>(items: T[], key: (o: T) => number): T {
   const sorted = [...items].sort((a, b) => key(a) - key(b));
-  if (!sorted.length) throw new RangeError('list index out of range');
+  if (!sorted.length) throw Boom.badData('No image candidates found');
   return sorted[sorted.length - 1];
 }
 function cmpStr(a: string, b: string): number {
@@ -192,7 +193,7 @@ export function extractResourceV1(data: Dict): Resource {
 export function extractResourceGql(data: Dict): Resource {
   data = deepcopy(data);
   _normalizeMediaGqlTypename(data);
-  if (!has(MEDIA_TYPES_GQL, data.__typename)) throw new Error(`KeyError: ${data.__typename}`);
+  if (!has(MEDIA_TYPES_GQL, data.__typename)) throw Boom.badData(`Unknown media type: ${data.__typename}`);
   data.media_type = MEDIA_TYPES_GQL[data.__typename];
   return makeResource({ ...data, pk: data.id, thumbnail_url: data.display_url });
 }
@@ -203,10 +204,10 @@ export function extractUsertag(data: Dict): Usertag {
   return makeUsertag({ user: extractUserShort(data.user), x, y });
 }
 
-/** Extract User Short info (mutates `data` like the python version) */
+/** Extract User Short info (mutates `data`) */
 export function extractUserShort(data: Dict): UserShort {
   data.pk = get(data, 'id', get(data, 'pk', null));
-  pyAssert(truthy(data.pk), `User without pk "${pyRepr(data)}"`);
+  ensure(truthy(data.pk), `User without pk "${reprValue(data)}"`);
   if (!has(data, 'latest_reel_media') && has(data, '1llatest_reel_media')) data.latest_reel_media = data['1llatest_reel_media'];
   const fs = get(data, 'friendship_status');
   if (fs && typeof fs === 'object' && !Array.isArray(fs)) {
@@ -230,7 +231,7 @@ export function extractViewer(data: Dict): Viewer {
   const user = data.user;
   delete data.user;
   user.pk = get(user, 'id', get(user, 'pk', null));
-  pyAssert(truthy(user.pk), `User without pk "${pyRepr(user)}"`);
+  ensure(truthy(user.pk), `User without pk "${reprValue(user)}"`);
   return makeViewer({ ...user, ...data });
 }
 
@@ -416,11 +417,11 @@ export function extractReplyMessage(data: Dict): ReplyMessage {
   const visualMedia = get(data, 'visual_media', {});
   if (truthy(visualMedia)) _convertDirectVisualMediaTimestamps(visualMedia);
   data.timestamp = _directTimestampFromMicroseconds(data.timestamp);
-  data.user_id = pyStr(data.user_id);
+  data.user_id = textValue(data.user_id);
   return makeReplyMessage(data);
 }
 
-function pyStr(v: any): string {
+function textValue(v: any): string {
   if (v === null || v === undefined) return 'None';
   if (v === true) return 'True';
   if (v === false) return 'False';
@@ -461,7 +462,7 @@ export function extractDirectMessage(data: Dict): DirectMessage {
   if (truthy(genericXma)) data.generic_xma = genericXma.map((i: any) => extractMediaV1Xma(i)).filter((i: any) => i);
   // Convert main timestamp
   data.timestamp = _directTimestampFromMicroseconds(data.timestamp);
-  data.user_id = pyStr(get(data, 'user_id', ''));
+  data.user_id = textValue(get(data, 'user_id', ''));
   data.client_context = get(data, 'client_context', '');
   // Convert reaction timestamps
   const reactions = get(data, 'reactions', {});
@@ -505,10 +506,10 @@ export function extractHashtagV1(data: Dict): Hashtag {
 
 export function extractStoryWeb(data: Dict): Story {
   const story = deepcopy(data);
-  if (get(story, 'pk') === null) throw new Error('KeyError: pk');
+  if (get(story, 'pk') === null) throw Boom.badData('Missing field: pk');
   const user = get(story, 'user');
   if (!user || typeof user !== 'object' || Array.isArray(user) || (get(user, 'pk') === null && get(user, 'id') === null)) {
-    throw new Error('KeyError: user.pk');
+    throw Boom.badData('Missing field: user.pk');
   }
   for (const field of ['story_locations', 'story_hashtags', 'story_cta', 'sponsor_tags', 'story_feed_media', 'story_link_stickers']) {
     if (get(story, field) === null) story[field] = [];
@@ -529,7 +530,7 @@ export function extractStoryWeb(data: Dict): Story {
 /** Extract story from Private API */
 export function extractStoryV1(data: Dict): Story {
   const story = deepcopy(data);
-  story.pk = pyStr(get(story, 'pk'));
+  story.pk = textValue(get(story, 'pk'));
   if (truthy(story.video_versions)) story.video_url = maxBy(story.video_versions, (o: any) => o.height * o.width).url;
   if (story.media_type === 2 && !story.product_type) story.product_type = 'story';
   if (has(story, 'image_versions2')) story.thumbnail_url = maxBy(story.image_versions2.candidates, (o: any) => o.height * o.width).url;
@@ -662,25 +663,25 @@ function _extractAboutLispy(c: string, data: Dict): About {
   const params: Dict = {};
   const parts = String(c).split('"');
   if (parts.length > 1) params.country = parts[1];
-  const sp = pyRepr(data).split('space_evenly');
+  const sp = reprValue(data).split('space_evenly');
   if (sp.length > 1) {
     const s = sp[1].split('stretch');
     try {
       params.username = idx(idx(idx(idx(s, 1).split('center'), 1).split(": '"), 1).split("',"), 0);
     } catch {
-      /* IndexError */
+      /* out of range */
     }
     try {
       params.date = idx(idx(idx(s, 4).split('&'), 1).split("'"), 2);
     } catch {
-      /* IndexError */
+      /* out of range */
     }
   }
   return makeAbout(params);
 }
 
 function idx<T>(arr: T[], i: number): T {
-  if (i >= arr.length) throw new RangeError('IndexError');
+  if (i >= arr.length) throw Boom.badData('Index out of range');
   return arr[i];
 }
 
@@ -692,7 +693,7 @@ export function extractAboutV1(data: Dict): About {
     params.country = c.initial;
   }
   let dateFinded = false;
-  const dumped = pyJsonDumps(data);
+  const dumped = jsonDumps(data);
   params.is_verified = dumped.includes('"Verified"');
   const ddata = dumped.split('")":');
   ddata.forEach((v, i) => {

@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import {
   ClientError,
   ClientGraphqlError,
@@ -25,7 +26,7 @@ import {
 import { iterPaginated } from '../utils/iterators';
 import { getLogger } from '../utils/logging';
 import { deepcopy, dumps, jsonValue } from '../utils/serialization';
-import { pyAssert } from '../utils/validation';
+import { ensure } from '../utils/validation';
 import { PUBLIC_WEB_APP_ID, PUBLIC_WEB_ASBD_ID } from './public';
 import type { Client } from '../client';
 
@@ -40,7 +41,7 @@ export const USER_REPORT_REASONS: Record<string, [string, string, string]> = {
   spam: ['ig_report_account', 'ig_its_inappropriate', 'ig_spam_v3'],
 };
 
-const logger = getLogger('instagrapi.mixins.user');
+const logger = getLogger('insta-node-js.user');
 
 export type INFO_FROM_MODULE = (typeof INFO_FROM_MODULES)[number];
 export type FOLLOWERS_ORDER = (typeof FOLLOWERS_ORDERS)[number];
@@ -327,7 +328,7 @@ export class UserMixin {
         from_module: fromModule,
         is_app_start: isAppStart,
       };
-      pyAssert((INFO_FROM_MODULES as readonly string[]).includes(fromModule), `Unsupported send_attribute="${fromModule}" ${INFO_FROM_MODULES}`);
+      ensure((INFO_FROM_MODULES as readonly string[]).includes(fromModule), `Unsupported send_attribute="${fromModule}" ${INFO_FROM_MODULES}`);
       if (fromModule !== 'self_profile') params.entry_point = 'profile';
       result = await this.privateRequest(`users/${id}/info/`, null, { params });
     } catch (e: any) {
@@ -389,7 +390,7 @@ export class UserMixin {
   async userFriendshipsV1(this: Client, userIds: Array<string | number>): Promise<RelationshipShort[]> {
     const userIdsStr = userIds.map(String).join(',');
     const result = await this.privateRequest('friendships/show_many/', { user_ids: userIdsStr, _uuid: this.uuid }, { withSignature: false });
-    pyAssert((result.status ?? '') === 'ok');
+    ensure((result.status ?? '') === 'ok');
     const relationships: RelationshipShort[] = [];
     for (const [userId, status] of Object.entries(result.friendship_statuses || {})) {
       relationships.push(makeRelationshipShort({ ...(status as any), user_id: userId }));
@@ -402,7 +403,7 @@ export class UserMixin {
     try {
       const params = { is_external_deeplink_profile_view: 'false' };
       const result = await this.privateRequest(`friendships/show/${userId}/`, null, { params });
-      pyAssert((result.status ?? '') === 'ok');
+      ensure((result.status ?? '') === 'ok');
       return makeRelationship({ ...result, user_id: userId });
     } catch (e) {
       if (e instanceof ClientError) {
@@ -780,7 +781,7 @@ export class UserMixin {
 
   /** Get pending incoming follow requests by Private Mobile API. Returns [users, max_id cursor]. */
   async userFollowRequestsChunk(this: Client, maxAmount = 0, maxId: string | null = ''): Promise<[UserShort[], string | null]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const users: UserShort[] = [];
     const uniqueSet = new Set<string>();
     while (true) {
@@ -807,7 +808,7 @@ export class UserMixin {
 
   /** Approve a pending incoming follow request */
   async userFollowRequestApprove(this: Client, userId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const result = await this.privateRequest(`friendships/approve/${id}/`, this.withActionData({ user_id: id }));
     const friendshipStatus = result.friendship_status || {};
@@ -817,7 +818,7 @@ export class UserMixin {
 
   /** Decline a pending incoming follow request */
   async userFollowRequestDecline(this: Client, userId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const result = await this.privateRequest(`friendships/ignore/${id}/`, this.withActionData({ user_id: id }));
     const friendshipStatus = result.friendship_status || {};
@@ -841,7 +842,7 @@ export class UserMixin {
 
   /** Follow a user */
   async userFollow(this: Client, userId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const currentUserId = String(this.userId);
     const followingCache: Map<string, UserShort> | undefined = this._users_following[currentUserId];
@@ -877,7 +878,7 @@ export class UserMixin {
 
   /** Unfollow a user */
   async userUnfollow(this: Client, userId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const data = this.withActionData({ user_id: id, _uid: String(this.userId), container_module: 'profile' });
     const result = await this.privateRequest(`friendships/destroy/${id}/`, data);
@@ -893,7 +894,7 @@ export class UserMixin {
     const data: Record<string, any> = { surface, is_auto_block_enabled: 'false', user_id: userId, _uid: this.userIdInt, _uuid: this.uuid };
     if (surface === 'direct_thread_info') data.client_request_id = this.requestId;
     const result = await this.privateRequest(`friendships/block/${userId}/`, data);
-    pyAssert((result.status ?? '') === 'ok');
+    ensure((result.status ?? '') === 'ok');
     return (result.friendship_status || {}).blocking === true;
   }
 
@@ -902,7 +903,7 @@ export class UserMixin {
     const data: Record<string, any> = { container_module: surface, user_id: userId, _uid: this.userIdInt, _uuid: this.uuid };
     if (surface === 'direct_thread_info') data.client_request_id = this.requestId;
     const result = await this.privateRequest(`friendships/unblock/${userId}/`, data);
-    pyAssert((result.status ?? '') === 'ok');
+    ensure((result.status ?? '') === 'ok');
     return (result.friendship_status || {}).blocking === false;
   }
 
@@ -910,7 +911,7 @@ export class UserMixin {
   async userReport(this: Client, userId: string | number, reason: USER_REPORT_REASON = 'spam'): Promise<boolean> {
     const id = String(userId);
     if (!(reason in USER_REPORT_REASONS)) {
-      throw new Error(`Unsupported user report reason "${reason}". Supported reasons: ${Object.keys(USER_REPORT_REASONS)}`);
+      throw Boom.badRequest(`Unsupported user report reason "${reason}". Supported reasons: ${Object.keys(USER_REPORT_REASONS)}`);
     }
     let result = await this.privateRequest(
       'reports/get_frx_prompt/',
@@ -952,7 +953,7 @@ export class UserMixin {
 
   /** Remove a follower */
   async userRemoveFollower(this: Client, userId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const result = await this.privateRequest(`friendships/remove_follower/${id}/`, this.withActionData({ user_id: id }));
     const cache: Map<string, UserShort> | undefined = this._users_followers[String(this.userId)];
@@ -993,7 +994,7 @@ export class UserMixin {
 
   /** Enable post notifications of a user (disable=true to unfavorite) */
   async enablePostsNotifications(this: Client, userId: string | number, disable = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const name = disable ? 'unfavorite' : 'favorite';
     const result = await this.privateRequest(`friendships/${name}/${id}/`, this.withActionData({ user_id: id, _uid: this.userIdInt }));
@@ -1007,7 +1008,7 @@ export class UserMixin {
 
   /** Enable videos notifications of a user */
   async enableVideosNotifications(this: Client, userId: string | number, revert = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const name = revert ? 'unfavorite' : 'favorite';
     const result = await this.privateRequest(`friendships/${name}_for_igtv/${id}/`, this.withActionData({ user_id: id, _uid: this.userIdInt }));
@@ -1021,7 +1022,7 @@ export class UserMixin {
 
   /** Enable reels notifications of a user */
   async enableReelsNotifications(this: Client, userId: string | number, revert = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const name = revert ? 'unfavorite' : 'favorite';
     const result = await this.privateRequest(`friendships/${name}_for_clips/${id}/`, this.withActionData({ user_id: id, _uid: this.userIdInt }));
@@ -1035,7 +1036,7 @@ export class UserMixin {
 
   /** Enable stories notifications of a user */
   async enableStoriesNotifications(this: Client, userId: string | number, revert = false): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const name = revert ? 'unfavorite' : 'favorite';
     const result = await this.privateRequest(`friendships/${name}_for_stories/${id}/`, this.withActionData({ user_id: id, _uid: this.userIdInt }));
@@ -1049,7 +1050,7 @@ export class UserMixin {
 
   /** Add to Close Friends List */
   async closeFriendAdd(this: Client, userId: string | number): Promise<any> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const data = {
       block_on_empty_thread_creation: 'false',
@@ -1066,7 +1067,7 @@ export class UserMixin {
 
   /** Remove from Close Friends List */
   async closeFriendRemove(this: Client, userId: string | number): Promise<boolean> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const id = String(userId);
     const data = {
       block_on_empty_thread_creation: 'false',
@@ -1087,10 +1088,10 @@ export class UserMixin {
    * Returns [user, creatorInfo]
    */
   async creatorInfo(this: Client, userId: string | number, entryPoint = 'direct_thread'): Promise<[UserShort, Record<string, any>]> {
-    pyAssert(this.userId, 'Login required');
+    ensure(this.userId, 'Login required');
     const params = { entry_point: entryPoint, surface_type: 'android', user_id: userId };
     const result = await this.privateRequest('creator/creator_info/', null, { params });
-    pyAssert((result.status ?? '') === 'ok');
+    ensure((result.status ?? '') === 'ok');
     const user = result.user || {};
     const creatorInfo = user.creator_info ?? {};
     delete user.creator_info;

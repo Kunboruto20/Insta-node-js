@@ -1,6 +1,7 @@
 /**
- * Tiny pydantic-v2 (lax mode, coerce_numbers_to_str=True) compatible validator.
+ * Runtime model validator (lax coercion: numbers → strings for `str` fields, numeric strings → numbers, timestamps → Date).
  */
+import { boomifyError } from '../errors';
 import { statSync } from 'node:fs';
 
 export type FieldType =
@@ -52,6 +53,7 @@ export class ModelValidationError extends Error {
     this.name = 'ValidationError';
     this.title = title;
     this.errors = errors;
+    boomifyError(this, 422, { code: 'INVALID_VALUE', model: title, errors });
   }
 }
 
@@ -66,7 +68,8 @@ function short(v: any): string {
 
 class Fail extends Error {
   constructor(public issues: ValidationIssue[]) {
-    super('fail');
+    super('Validation failed');
+    boomifyError(this, 422, { code: 'INVALID_VALUE' });
   }
 }
 
@@ -205,7 +208,7 @@ function coerce(type: FieldType, value: any, loc: Array<string | number>): any {
         throw new Fail([{ loc, msg: "URL scheme should be 'http' or 'https'", input: value }]);
       }
       if (value.length > 2083) throw new Fail([{ loc, msg: 'URL should have at most 2083 characters', input: value }]);
-      // pydantic normalizes a bare host to have a trailing slash
+      // a bare host is normalized to have a trailing slash
       if (/^https?:\/\/[^/?#]+$/i.test(value)) return value + '/';
       return value;
     }
@@ -238,7 +241,7 @@ function toDatetime(value: any, loc: Array<string | number>): Date {
   else if (typeof value === 'bigint') num = Number(value);
   else if (typeof value === 'string' && NUM_RE.test(value)) num = Number(value);
   if (num !== null) {
-    // pydantic: values > 2e10 are treated as milliseconds (and > 2e13 as microseconds etc.)
+    // values > 2e10 are treated as milliseconds (and > 2e13 as microseconds etc.)
     let seconds = num;
     while (Math.abs(seconds) > 2e10) seconds /= 1000;
     return new Date(seconds * 1000);
@@ -252,7 +255,7 @@ function toDatetime(value: any, loc: Array<string | number>): Date {
 
 function parseInto(schema: ModelSchema, data: any, loc: Array<string | number>): any {
   if (data === null || data === undefined || typeof data !== 'object' || Array.isArray(data)) {
-    // pydantic accepts model instances / dicts only
+    // only model instances / plain objects are accepted
     throw new Fail([{ loc, msg: `Input should be a valid dictionary or instance of ${schema.name}`, input: data }]);
   }
   const fields = allFields(schema);

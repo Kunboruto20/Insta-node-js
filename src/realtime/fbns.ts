@@ -1,6 +1,7 @@
 /**
  * FBNS (Facebook Notification Service) push client over MQTToT (mqtt-mini.facebook.com).
  */
+import * as Boom from '@hapi/boom';
 import { randomUUID } from 'crypto';
 import {
   DecodedMQTToTPacket,
@@ -20,7 +21,7 @@ import {
   writePublishPacket,
   writeSubscribePacket,
 } from './mqttot';
-import { dumps, pyRepr } from '../utils/serialization';
+import { dumps, reprValue } from '../utils/serialization';
 import { isDict, jsonLoads, nextPacketId } from './client';
 import type { Client } from '../client';
 
@@ -69,7 +70,7 @@ export class FbnsDeviceAuth {
     const phoneId: string = (client && client.phoneId) || '';
     const userId = optionalInt(stored.user_id || 0);
     if (userId === null) {
-      throw new RangeError(`invalid literal for int() with base 10: ${pyRepr(stored.user_id)}`);
+      throw Boom.badRequest(`Invalid fbns_auth.user_id in settings: ${reprValue(stored.user_id)}`);
     }
     return new FbnsDeviceAuth({
       client_id: stored.client_id || phoneId.slice(0, 20),
@@ -148,7 +149,7 @@ export class FbnsClient {
     await this._send(this.connectPacket());
     const packet = decodePacket(await this._recvPacket());
     if (packet.packet_type !== 'connack' || packet.return_code !== 0) {
-      throw new MQTToTConnectionError(`FBNS MQTT connect failed: ${pyRepr(packet.return_code)}`);
+      throw new MQTToTConnectionError(`FBNS MQTT connect failed: ${reprValue(packet.return_code)}`);
     }
     this.auth.read(packet.payload);
     this.auth.save(this.client);
@@ -180,7 +181,7 @@ export class FbnsClient {
   buildConnection(): MQTToTConnection {
     const phoneId: string = this.client.phoneId || '';
     const clientId = this.auth.client_id || phoneId.slice(0, 20);
-    if (!clientId) throw new Error('AssertionError: Client phone_id is required');
+    if (!clientId) throw Boom.preconditionFailed('Client phoneId is required');
     const userAgent = this.client.userAgent ?? '';
     const clientInfo: Record<string, any> = {
       userId: this.auth.user_id,
@@ -230,9 +231,9 @@ export class FbnsClient {
         await this._ack(packet);
         await this.emit('reg_response', response);
         const error = isDict(response) ? response.error : null;
-        if (error) throw new Error(`FBNS registration failed: ${typeof error === 'string' ? error : pyRepr(error)}`);
+        if (error) throw Boom.badGateway(`FBNS registration failed: ${typeof error === 'string' ? error : reprValue(error)}`);
         const token = isDict(response) ? response.token : null;
-        if (!token) throw new Error('FBNS registration response did not include token');
+        if (!token) throw Boom.badGateway('FBNS registration response did not include token');
         return String(token);
       }
       await this.dispatchPacket(packet.topic as string, packet.payload);
@@ -265,7 +266,7 @@ export class FbnsClient {
   }
 
   async ping(maxPackets = 5): Promise<boolean> {
-    if (!this.connected) throw new Error('FBNS client is not connected');
+    if (!this.connected) throw Boom.preconditionFailed('FBNS client is not connected');
     await this._send(writePingreqPacket());
     for (let i = 0; i < maxPackets; i++) {
       const packet = decodePacket(await this._recvPacket());

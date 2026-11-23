@@ -1,3 +1,4 @@
+import * as Boom from '@hapi/boom';
 import { FbnsClient, FbnsDeviceAuth, RealtimeClient } from '../realtime';
 import type { MQTToTTransport, RealtimeHandler } from '../realtime/mqttot';
 import type { Client } from '../client';
@@ -27,12 +28,12 @@ export class RealtimeMixin {
   }
 
   async realtimeReadOnce(this: Client): Promise<any> {
-    if (!this.realtime) throw new Error('Realtime client is not connected');
+    if (!this.realtime) throw Boom.preconditionFailed('Realtime client is not connected');
     return this.realtime.readOnce();
   }
 
   async realtimePing(this: Client): Promise<boolean> {
-    if (!this.realtime) throw new Error('Realtime client is not connected');
+    if (!this.realtime) throw Boom.preconditionFailed('Realtime client is not connected');
     return this.realtime.ping();
   }
 
@@ -71,12 +72,12 @@ export class RealtimeMixin {
   }
 
   async fbnsReadOnce(this: Client): Promise<any> {
-    if (!this.fbns) throw new Error('FBNS client is not connected');
+    if (!this.fbns) throw Boom.preconditionFailed('FBNS client is not connected');
     return this.fbns.readOnce();
   }
 
   async fbnsPing(this: Client): Promise<boolean> {
-    if (!this.fbns) throw new Error('FBNS client is not connected');
+    if (!this.fbns) throw Boom.preconditionFailed('FBNS client is not connected');
     return this.fbns.ping();
   }
 }
