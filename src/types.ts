@@ -6,7 +6,7 @@
  * required fields and defaults. Integer identifiers are kept as strings because they
  * can exceed Number.MAX_SAFE_INTEGER.
  */
-import { ModelSchema, parseModel } from './models/validator';
+import { ModelSchema, ModelValidationError, parseModel } from './models/validator';
 export { ModelValidationError, parseModel } from './models/validator';
 export type { ModelSchema } from './models/validator';
 
@@ -2214,6 +2214,8 @@ export interface DirectThread {
   assigned_admin_id: string | null;
   shh_mode_enabled: boolean | null;
   last_seen_at: Record<string, LastSeenInfo>;
+  /** Have I seen this thread? (userId: your account user_id) */
+  isSeen(userId: string | number | bigint): boolean;
 }
 export const DirectThreadSchema: ModelSchema = {
   name: "DirectThread",
@@ -2248,8 +2250,20 @@ export const DirectThreadSchema: ModelSchema = {
     last_seen_at: { type: { dict: () => LastSeenInfoSchema }, default: () => ({}) },
   },
 };
+const DirectThreadProto = {
+  isSeen(this: DirectThread, userId: string | number | bigint): boolean {
+    const uid = String(userId);
+    const lastSeen = this.last_seen_at || {};
+    if (!(uid in lastSeen)) return false;
+    const own = lastSeen[uid].timestamp.getTime() / 1000;
+    const timestamps = Object.entries(lastSeen)
+      .filter(([k]) => k !== uid)
+      .map(([, v]) => v.timestamp.getTime() / 1000 - own > 0);
+    return !timestamps.some(Boolean);
+  },
+};
 export function makeDirectThread(data: Record<string, any>): DirectThread {
-  return parseModel<DirectThread>(DirectThreadSchema, data);
+  return Object.setPrototypeOf(parseModel<DirectThread>(DirectThreadSchema, data), DirectThreadProto);
 }
 
 export interface Relationship {
@@ -2435,4 +2449,17 @@ export const SecondaryAccountSchema: ModelSchema = {
 };
 export function makeSecondaryAccount(data: Record<string, any>): SecondaryAccount {
   return parseModel<SecondaryAccount>(SecondaryAccountSchema, data);
+}
+
+
+/** validate_external_url: allow None, URLs or any string */
+export function validateExternalUrl(v: any): any {
+  if (v === null || v === undefined || typeof v === 'string') return v;
+  throw new ModelValidationError('external_url', [{ loc: ['external_url'], msg: 'external_url must be a URL or string' }]);
+}
+
+/** validate_url_fields: allow None, URLs or any string */
+export function validateUrlFields(v: any): any {
+  if (v === null || v === undefined || typeof v === 'string') return v;
+  throw new ModelValidationError('url', [{ loc: ['url'], msg: 'URL field must be a URL or string' }]);
 }
