@@ -69,3 +69,23 @@ test('DirectThread.isSeen', () => {
   assert.equal(t.isSeen('99'), false);
   assert.ok(!('isSeen' in JSON.parse(JSON.stringify(t))));
 });
+
+test('media downloads send the Instagram app User-Agent', async () => {
+  const http = await import('node:http');
+  let seen: string | undefined;
+  const server = http.createServer((req, res) => {
+    seen = req.headers['user-agent'];
+    res.end('data');
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const port = (server.address() as any).port;
+  try {
+    const cl = new ig.Client();
+    const bytes = await cl.photoDownloadByUrlOrigin(`http://127.0.0.1:${port}/photo.jpg`);
+    assert.equal(bytes.toString(), 'data');
+    assert.equal(seen, cl.userAgent);
+    assert.match(seen!, /^Instagram \d+\.\d+\.\d+\.\d+\.\d+ Android/);
+  } finally {
+    server.close();
+  }
+});

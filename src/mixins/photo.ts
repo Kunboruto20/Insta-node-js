@@ -104,7 +104,7 @@ export class DownloadPhotoMixin {
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
     if (existsSync(filePath) && !overwrite) return path.resolve(filePath);
-    const response = await httpGet(url, { timeout: this.readTimeout });
+    const response = await httpGet(url, this._downloadRequestOptions());
     response.raise_for_status();
     return this._downloadResponseToPath(response, filePath);
   }
@@ -112,7 +112,7 @@ export class DownloadPhotoMixin {
   /** Download photo using URL, returns bytes */
   async photoDownloadByUrlOrigin(this: Client, url: string): Promise<Buffer> {
     url = String(url);
-    const response = await httpGet(url, { timeout: this.readTimeout });
+    const response = await httpGet(url, this._downloadRequestOptions());
     response.raise_for_status();
     return this._downloadResponseBytes(response, url);
   }

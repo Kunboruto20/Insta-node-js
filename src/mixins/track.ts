@@ -28,7 +28,7 @@ export class TrackMixin {
     ensure(fname, 'The URL must contain the path to the file (m4a or mp3).');
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
-    const response = await httpGet(url, { timeout: this.readTimeout });
+    const response = await httpGet(url, this._downloadRequestOptions());
     response.raise_for_status();
     void fsp;
     return this._downloadResponseToPath(response, filePath);

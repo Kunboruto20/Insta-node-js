@@ -539,6 +539,13 @@ export class PrivateRequestMixin {
    * Send private API request (i.instagram.com/api/v1/...).
    * `data` - POST body (object is signed unless withSignature=false); null/undefined → GET.
    */
+  /** Options for downloading media files from Instagram's CDN (same User-Agent as the app). */
+  _downloadRequestOptions(this: Client): { timeout: number; headers: Record<string, string> } {
+    const headers: Record<string, string> = {};
+    if (this.userAgent) headers['User-Agent'] = this.userAgent;
+    return { timeout: this.readTimeout, headers };
+  }
+
   async privateRequest(this: Client, endpoint: string, data: any = null, opts: PrivateRequestOptions = {}): Promise<any> {
     let headers = opts.headers ? { ...opts.headers } : null;
     if (this.authorization) {
