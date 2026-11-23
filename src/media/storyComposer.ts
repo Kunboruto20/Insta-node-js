@@ -31,7 +31,20 @@ async function renderText(
   bgColor: string | null = null,
 ): Promise<{ path: string; size: [number, number] }> {
   const markup = `<span foreground="${xmlEscape(color)}"${bgColor ? ` background="${xmlEscape(bgColor)}"` : ''}>${xmlEscape(text)}</span>`;
-  const png = await loadSharp()({ text: { text: markup, font: `${font} ${fontSize}`, dpi: 72, rgba: true } }).png().toBuffer();
+  let png: Buffer;
+  try {
+    png = await loadSharp()({ text: { text: markup, font: `${font} ${fontSize}`, dpi: 72, rgba: true } }).png().toBuffer();
+  } catch (e: any) {
+    if (/class "text" not found|text.*not (?:available|supported)/i.test(String(e?.message))) {
+      throw Boom.failedDependency(
+        'StoryBuilder captions need text rendering, which this sharp build does not include ' +
+          '(the WebAssembly build used on Android / Termux). Use StoryBuilder without a caption, ' +
+          'or a platform with a native sharp binary.',
+        { code: 'DEPENDENCY_MISSING', dependency: 'sharp-text' },
+      );
+    }
+    throw e;
+  }
   const meta = await loadSharp()(png).metadata();
   const file = makeTmpPath('.png', 'text_');
   await loadSharp()(png).toFile(file);
