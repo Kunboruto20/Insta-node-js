@@ -1,0 +1,48 @@
+{
+  "name": "insta-node-js",
+  "version": "1.0.0",
+  "description": "Fast and effective Instagram Private API wrapper for Node.js, written in TypeScript, with realtime MQTT support",
+  "author": "Kunboruto20",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kunboruto20/Insta-node-js.git"
+  },
+  "keywords": [
+    "instagram",
+    "instagram-private-api",
+    "instagram-api",
+    "instagram-client",
+    "mqtt",
+    "realtime",
+    "direct",
+    "typescript"
+  ],
+  "dependencies": {
+    "fetch-socks": "^1.3.3",
+    "sharp": "^0.33.5",
+    "undici": "^6.29.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}
