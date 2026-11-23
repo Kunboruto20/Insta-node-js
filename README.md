@@ -288,7 +288,7 @@ cl.setProxy('socks5://user:pass@1.2.3.4:1080');
 cl.setProxy(null); // no proxy
 ```
 
-The proxy is used for HTTP requests and for the realtime / FBNS MQTT connections (`http`, `https`, `socks4`, `socks4a`, `socks5`, `socks5h`).
+The proxy is used for every connection the client makes: API and web requests, media downloads (including images passed to uploads as URLs) and the realtime / FBNS MQTT connections (`http`, `https`, `socks4`, `socks4a`, `socks5`, `socks5h`).
 
 ## Device, locale and timezone
 
@@ -756,17 +756,17 @@ Status codes used by the library:
 | --- | --- |
 | 400 | invalid arguments, `InvalidTargetUser`, `InvalidMediaId`, `AlbumUnknownFormat`, `VideoTooLongException` |
 | 401 | `LoginRequired`, `ClientLoginRequired`, `BadPassword`, `BadCredentials`, `TwoFactorRequired`, `ReloginAttemptExceeded` |
-| 403 | `ChallengeRequired` (and all challenge errors), `FeedbackRequired`, `SentryBlock`, `ProxyAddressIsBlocked`, `PrivateAccount`, `AccountSuspended`, `CaptchaChallengeRequired` |
-| 404 | `UserNotFound`, `MediaNotFound`, `StoryNotFound`, `HashtagNotFound`, `LocationNotFound`, `DirectThreadNotFound`, `CommentNotFound`, ... |
+| 403 | `ChallengeRequired` (and all challenge errors), `FeedbackRequired`, `SentryBlock`, `ProxyAddressIsBlocked`, `PrivateAccount`, `AccountSuspended`, `CaptchaChallengeRequired`, local files without read permission (`EACCES`) |
+| 404 | `UserNotFound`, `MediaNotFound`, `StoryNotFound`, `HashtagNotFound`, `LocationNotFound`, `DirectThreadNotFound`, `CommentNotFound`, ..., and missing local files (`ENOENT`) |
 | 408 | realtime / FBNS read timeout (`err.name === 'TimeoutError'`) |
 | 412 | realtime / FBNS client not connected |
-| 415 | unsupported file format |
+| 415 | unsupported file format or unreadable image |
 | 422 | unexpected data from Instagram, `ModelValidationError` |
 | 424 | ffmpeg / ffprobe missing |
 | 429 | `PleaseWaitFewMinutes`, `RateLimitError`, `ClientThrottledError` |
-| 5xx | network and transport errors (`ClientConnectionError`, `ClientJSONDecodeError`, `ClientGraphqlError`, ...) |
+| 5xx | network and transport errors (`ClientConnectionError`, `ClientJSONDecodeError`, `ClientGraphqlError`, proxy and MQTT connection errors: 503), unexpected internal errors (500) |
 
-Errors without a fixed status use the HTTP status of Instagram's response.
+Errors without a fixed status use the HTTP status of Instagram's response. Errors raised by Node.js or by dependencies (file system, sockets, image decoding) are converted to Boom errors too; their original class, message and `code` (e.g. `ENOENT`) are kept.
 
 Global handler for private API errors. If the handler returns normally, the failed request is **retried**; throw to give up:
 

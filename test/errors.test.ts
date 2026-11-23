@@ -40,3 +40,34 @@ test('model validation errors are Boom 422', () => {
     (e: any) => e instanceof ig.ModelValidationError && Boom.isBoom(e, 422) && e.data.errors.length > 0,
   );
 });
+
+test('errors from Node.js and dependencies are converted to Boom', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const cl = new ig.Client();
+  await assert.rejects(cl.photoUpload('/definitely/missing.jpg', 'x'), (e: any) => Boom.isBoom(e, 404));
+  const bad = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ig-')), 'bad.jpg');
+  fs.writeFileSync(bad, 'not an image');
+  await assert.rejects(cl.photoUpload(bad, 'x'), (e: any) => Boom.isBoom(e, 415));
+  const rt = new ig.Client({ proxy: 'http://127.0.0.1:9' });
+  await assert.rejects(rt.fbnsConnect(), (e: any) => Boom.isBoom(e, 503) && e.name === 'ConnectionError');
+});
+
+test('async generators keep working and surface Boom errors', async () => {
+  const cl = new ig.Client();
+  let calls = 0;
+  (cl as any).userMediasPaginated = async () => {
+    calls++;
+    if (calls === 1) return [[{ pk: '1' }, { pk: '2' }], 'next'];
+    throw new TypeError('boom inside page 2');
+  };
+  const seen: string[] = [];
+  await assert.rejects(
+    (async () => {
+      for await (const m of cl.iterUserMedias('1', 10)) seen.push((m as any).pk);
+    })(),
+    (e: any) => Boom.isBoom(e) && e instanceof TypeError,
+  );
+  assert.deepEqual(seen, ['1', '2']);
+});

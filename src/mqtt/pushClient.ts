@@ -2,6 +2,7 @@
  * FBNS (Facebook Notification Service) push client over MQTToT (mqtt-mini.facebook.com).
  */
 import * as Boom from '@hapi/boom';
+import { guardMethods } from '../core/boomErrors';
 import { randomUUID } from 'crypto';
 import {
   DecodedMQTToTPacket,
@@ -376,3 +377,7 @@ export function stripLengthPrefixedJson(payload: Buffer): Buffer {
   if (size === body.length - 2 && (body[2] === 0x7b || body[2] === 0x5b)) return body.subarray(2);
   return body;
 }
+
+// Every error thrown by the FBNS client is a Boom error.
+guardMethods(FbnsDeviceAuth.prototype);
+guardMethods(FbnsClient.prototype);

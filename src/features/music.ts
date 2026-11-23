@@ -2,7 +2,6 @@ import { promises as fsp } from 'node:fs';
 import * as path from 'node:path';
 import { ClientError, TrackNotFound } from '../core/errorClasses';
 import { extractTrack } from '../parsing/responseParsers';
-import { get as httpGet } from '../net/httpClient';
 import { Track } from '../models/schemas';
 import { jsonValue } from '../helpers/encoding';
 import { ensure } from '../helpers/assertions';
@@ -28,7 +27,7 @@ export class TrackFeature {
     ensure(fname, 'The URL must contain the path to the file (m4a or mp3).');
     const name = filename ? `${filename}.${fname.slice(fname.lastIndexOf('.') + 1)}` : fname;
     const filePath = path.join(folder || '', name);
-    const response = await httpGet(url, this._downloadRequestOptions());
+    const response = await this._downloadGet(url);
     response.raise_for_status();
     void fsp;
     return this._downloadResponseToPath(response, filePath);

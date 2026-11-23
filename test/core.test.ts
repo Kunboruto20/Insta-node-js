@@ -89,3 +89,24 @@ test('media downloads send the Instagram app User-Agent', async () => {
     server.close();
   }
 });
+
+test('media downloads go through the client proxy', async () => {
+  const net = await import('node:net');
+  const hits: string[] = [];
+  const proxy = net.createServer((s) =>
+    s.once('data', (d) => {
+      hits.push(d.toString().split('\r\n')[0]);
+      s.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+    }),
+  );
+  await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r));
+  const port = (proxy.address() as any).port;
+  try {
+    const cl = new ig.Client({ proxy: `http://127.0.0.1:${port}` });
+    await assert.rejects(cl.photoDownloadByUrlOrigin('https://cdn.example.invalid/photo.jpg'));
+    await assert.rejects(cl.videoDownloadByUrlOrigin('https://cdn.example.invalid/video.mp4'));
+    assert.deepEqual(hits, ['CONNECT cdn.example.invalid:443 HTTP/1.1', 'CONNECT cdn.example.invalid:443 HTTP/1.1']);
+  } finally {
+    proxy.close();
+  }
+});

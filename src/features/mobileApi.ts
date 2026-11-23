@@ -34,7 +34,7 @@ import {
   UserNotFound,
   VideoTooLongException,
 } from '../core/errorClasses';
-import { ChunkedEncodingError, ConnectionError, HTTPError, JSONDecodeError, Response } from '../net/httpClient';
+import { ChunkedEncodingError, ConnectionError, HTTPError, JSONDecodeError, Response, Session } from '../net/httpClient';
 import { generateSignature } from '../helpers/signing';
 import { truncateLogText } from '../helpers/logger';
 import { dumps } from '../helpers/encoding';
@@ -539,11 +539,35 @@ export class PrivateRequestFeature {
    * Send private API request (i.instagram.com/api/v1/...).
    * `data` - POST body (object is signed unless withSignature=false); null/undefined → GET.
    */
-  /** Options for downloading media files from Instagram's CDN (same User-Agent as the app). */
-  _downloadRequestOptions(this: Client): { timeout: number; headers: Record<string, string> } {
+  /** Options for downloading media files from Instagram's CDN (same User-Agent and proxy as the app). */
+  _downloadRequestOptions(this: Client): { timeout: number; headers: Record<string, string>; proxies: Record<string, string> } {
     const headers: Record<string, string> = {};
     if (this.userAgent) headers['User-Agent'] = this.userAgent;
-    return { timeout: this.readTimeout, headers };
+    return { timeout: this.readTimeout, headers, proxies: { ...(this.private.proxies as Record<string, string>) } };
+  }
+
+  /**
+   * Download a media file from Instagram's CDN. Uses the client's proxy and TLS settings
+   * (the session is rebuilt when they change), and the app User-Agent.
+   */
+  async _downloadGet(this: Client, url: string): Promise<Response> {
+    const key = JSON.stringify([this.private.proxies, this.tlsVerify]);
+    if (!this._downloadSession || this._downloadSessionKey !== key) {
+      const session = new Session();
+      session.verify = this.tlsVerify;
+      session.proxies = { ...this.private.proxies };
+      this._downloadSession = session;
+      this._downloadSessionKey = key;
+    }
+    return this._downloadSession.get(url, this._downloadRequestOptions());
+  }
+
+  /** A local path is returned as is; an http(s) URL is downloaded through the client's proxy. */
+  async _loadMediaSource(this: Client, source: string): Promise<string | Buffer> {
+    if (!/^https?:\/\//i.test(source)) return source;
+    const response = await this._downloadGet(source);
+    response.raise_for_status();
+    return response.content;
   }
 
   async privateRequest(this: Client, endpoint: string, data: any = null, opts: PrivateRequestOptions = {}): Promise<any> {
