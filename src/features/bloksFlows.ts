@@ -460,7 +460,15 @@ export class BloksFeature {
     await this.bloksCaaLoginProcessClientData(waterfallId, offlineExperimentGroup, bloksVersioningId, domain);
     this.attestationChallengeNonce = '';
     this.attestationKeyNonce = '';
+    this.attestationPlayIntegrityNonce = '';
     await this.attestationCreateAndroidKeystore('', domain);
+    // The app performs the Play Integrity handshake next to the keystore one.
+    // Best-effort: it must never block login if the endpoint changes or fails.
+    try {
+      await this.attestationCreateAndroidPlayIntegrity(domain);
+    } catch {
+      /* non-fatal: attestation stays keystore-only */
+    }
     if (this.caaAac) await this.bloksCaaLoginOauthTokenFetch(username, waterfallId, offlineExperimentGroup, bloksVersioningId, domain);
     return Boolean(this.caaAac && this.attestationChallengeNonce);
   }
