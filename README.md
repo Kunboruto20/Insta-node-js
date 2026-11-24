@@ -237,11 +237,20 @@ const cl = new Client({
 
 All options are optional. `settings` accepts an object previously returned by `getSettings()`; `logger` accepts a custom logger (see [Logging](#logging)).
 
-### TLS fingerprint (`impersonate` transport)
+### TLS handshake profile
 
-The default transports perform the TLS handshake with Node's own TLS stack. Instagram's edge sometimes answers a fresh username/password login with `HTTP 429` even when the IP is clean, because the handshake does not match the one its mobile app produces.
+The private API connection should perform a TLS handshake that looks like the official app's. Two transports are available for that.
 
-The `impersonate` transport routes the private API through a TLS stack that can present an arbitrary `JA3` fingerprint, so the handshake can be made to match a real mobile client. It needs the optional [`cycletls`](https://www.npmjs.com/package/cycletls) package (a native helper):
+**`mobile` (pure Node, no extra dependency — recommended).** Configures Node's own TLS stack for the mobile profile: **TLS 1.3 only**, a hybrid post-quantum + classical key-share group list (`X25519MLKEM768:X25519:P-256:P-384`) and **h2-only** ALPN. This is the handshake the app's private API uses. It needs nothing beyond the library, so it works everywhere Node runs (including Termux/Android).
+
+```ts
+const cl = new Client({ privateTransport: 'mobile' });
+await cl.login('USERNAME', 'PASSWORD');
+```
+
+The default `http2` transport already applies this same profile; `mobile` is the explicit name for it.
+
+**`impersonate` (optional, needs a native helper).** Node's TLS stack cannot control every byte of the `ClientHello` (extension order, GREASE), so its `JA3` is never byte-identical to the app's. When an exact `JA3` is required, the `impersonate` transport routes the private API through a TLS stack that can present an arbitrary one. It needs the optional [`cycletls`](https://www.npmjs.com/package/cycletls) package (a native helper):
 
 ```bash
 npm install cycletls
@@ -257,7 +266,7 @@ const cl = new Client({
 await cl.login('USERNAME', 'PASSWORD');
 ```
 
-`privateImpersonateJa3` defaults to a modern Chrome-on-Android `ClientHello`. For the closest match, capture the `JA3` of the official app (e.g. with a TLS-inspecting proxy) and pass it explicitly. `cycletls` ships a native binary and may not be available on every platform (e.g. Termux/Android); it is optional and only required when this transport is used.
+`privateImpersonateJa3` defaults to a modern Chrome-on-Android `ClientHello`. For the closest match, capture the `JA3` of the official app (e.g. with a TLS-inspecting proxy) and pass it explicitly. `cycletls` ships a native binary and is **not available on every platform** (notably Termux/Android ARM64); it is optional and only required when this transport is used. On platforms without it, use the `mobile` transport, or log in with a `sessionid` (which skips the login handshake entirely).
 
 ## Authentication
 

@@ -79,6 +79,13 @@ test('impersonate transport wires onto the private session', () => {
   assert.throws(() => new ig.Client({ privateTransport: 'bogus' as any }), /privateTransport must be/);
 });
 
+test('mobile transport is a pure-Node profile needing no native helper', () => {
+  const cl = new ig.Client({ privateTransport: 'mobile' });
+  assert.equal(cl.privateTransport, 'mobile');
+  assert.equal(cl.private.transport, 'mobile');
+  assert.equal(cl.public.transport, 'http1');
+});
+
 test('impersonate transport fails clearly when cycletls is absent', async () => {
   const cl = new ig.Client({ privateTransport: 'impersonate' });
   await assert.rejects(cl.private.get('https://i.instagram.com/'), /cycletls/);
