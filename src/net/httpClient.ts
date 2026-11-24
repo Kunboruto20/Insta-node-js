@@ -477,10 +477,12 @@ export class Session {
       }
     }
     if (this.mobileTls || this.transport === 'http2' || this.transport === 'mobile') {
-      // Mobile-like ClientHello: TLS 1.3 only with modern groups, matching the official app's handshake.
+      // Mobile ClientHello profile: TLS 1.3 only, a hybrid post-quantum + classical
+      // key-share group list, and h2-only ALPN — the handshake the official app's
+      // private API connection performs. Pure Node, no native dependency.
       opts.minVersion = 'TLSv1.3';
       opts.maxVersion = 'TLSv1.3';
-      opts.ecdhCurve = this.transport === 'mobile' ? 'X25519' : 'X25519MLKEM768:X25519:P-256:P-384';
+      opts.ecdhCurve = 'X25519MLKEM768:X25519:P-256:P-384';
       opts.ALPNProtocols = this.transport === 'http1' ? ['http/1.1'] : ['h2'];
     }
     return opts;
