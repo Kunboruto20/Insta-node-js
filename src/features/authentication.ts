@@ -951,7 +951,7 @@ export class LoginFeature {
       sessionRetryStatuses?: number[] | null;
       publicTransport?: 'http1' | 'http2' | null;
       publicTransportImpersonate?: string | null;
-      privateTransport?: 'http1' | 'http2' | 'mobile' | 'impersonate' | null;
+      privateTransport?: 'http1' | 'http2' | 'mobile' | null;
     } = {},
   ): boolean {
     let privateTransport = opts.privateTransport ?? null;

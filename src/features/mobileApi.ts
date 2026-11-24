@@ -153,16 +153,16 @@ export class PrivateRequestFeature {
     };
   }
 
-  _normalizePrivateTransport(this: Client, privateTransport: any): 'http1' | 'http2' | 'mobile' | 'impersonate' {
-    if (!['http1', 'http2', 'mobile', 'impersonate'].includes(privateTransport)) {
-      throw Boom.badRequest("privateTransport must be 'http1', 'http2', 'mobile' or 'impersonate'");
+  _normalizePrivateTransport(this: Client, privateTransport: any): 'http1' | 'http2' | 'mobile' {
+    if (!['http1', 'http2', 'mobile'].includes(privateTransport)) {
+      throw Boom.badRequest("privateTransport must be 'http1', 'http2' or 'mobile'");
     }
     return privateTransport;
   }
 
-  _configurePrivateSessionRetry(this: Client, privateTransport?: 'http1' | 'http2' | 'mobile' | 'impersonate' | null): void {
+  _configurePrivateSessionRetry(this: Client, privateTransport?: 'http1' | 'http2' | 'mobile' | null): void {
     const transport = privateTransport ?? this.privateTransport;
-    if ((transport === 'http2' || transport === 'mobile' || transport === 'impersonate') && this._privateAdapterTransport === transport) return;
+    if ((transport === 'http2' || transport === 'mobile') && this._privateAdapterTransport === transport) return;
     this.private.mount(transport, this._buildPrivateSessionRetryStrategy());
     this.privateTransport = transport;
     this._privateAdapterTransport = transport;
