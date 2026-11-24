@@ -329,23 +329,7 @@ export interface Proxies {
   all?: string;
 }
 
-export type Transport = 'http1' | 'http2' | 'mobile' | 'impersonate';
-
-/**
- * Default JA3 for the "impersonate" transport: a modern Chrome-on-Android
- * BoringSSL ClientHello. The official app's handshake is BoringSSL-based, so
- * this is far closer to it than Node's own OpenSSL fingerprint. Override it
- * with a captured value for an exact match.
- */
-export const DEFAULT_IMPERSONATE_JA3 =
-  '771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,' +
-  '0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0';
-
-/** Minimal shape of the lazily-loaded cycletls instance we rely on. */
-interface CycleTLSClient {
-  (url: string, config: Record<string, any>, method: string): Promise<{ status: number; body: string; headers: Record<string, any>; finalUrl?: string }>;
-  exit(): Promise<void>;
-}
+export type Transport = 'http1' | 'http2' | 'mobile';
 
 export interface RetryConfig {
   total: number;
@@ -437,13 +421,8 @@ export class Session {
   maxRedirects = 30;
   /** browser profile name used by the public "http2" transport */
   impersonate?: string;
-  /** JA3 presented by the "impersonate" transport (defaults to a Chrome-on-Android ClientHello) */
-  impersonateJa3: string = DEFAULT_IMPERSONATE_JA3;
-  /** optional explicit HTTP/2 settings fingerprint for the "impersonate" transport */
-  impersonateHttp2?: string;
 
   private dispatchers = new Map<string, Dispatcher>();
-  private cycleTls: Promise<CycleTLSClient> | null = null;
 
   mount(transport: Transport, retry?: Partial<RetryConfig>): void {
     this.transport = transport;
@@ -454,11 +433,6 @@ export class Session {
 
   close(): void {
     this.closeDispatchers();
-    if (this.cycleTls) {
-      const pending = this.cycleTls;
-      this.cycleTls = null;
-      pending.then((c) => c.exit()).catch(() => undefined);
-    }
   }
 
   private closeDispatchers() {
@@ -625,7 +599,6 @@ export class Session {
   }
 
   async send(req: PreparedRequest, opts: RequestOptions = {}): Promise<Response> {
-    if (this.transport === 'impersonate') return this.sendViaCycleTLS(req, opts);
     const url = new URL(req.url);
     const proxyUrl = this.selectProxy(url, opts.proxies);
     const dispatcher = this.getDispatcher(proxyUrl);
@@ -708,91 +681,6 @@ export class Session {
     return response;
   }
 
-  private loadCycleTLS(): Promise<CycleTLSClient> {
-    if (this.cycleTls) return this.cycleTls;
-    this.cycleTls = (async () => {
-      let initCycleTLS: (opts?: Record<string, any>) => Promise<CycleTLSClient>;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        initCycleTLS = require('cycletls');
-      } catch {
-        throw new ConnectionError(
-          "The 'impersonate' transport needs the optional 'cycletls' package. Install it with: npm install cycletls",
-        );
-      }
-      return initCycleTLS();
-    })();
-    this.cycleTls.catch(() => {
-      this.cycleTls = null;
-    });
-    return this.cycleTls;
-  }
-
-  private async sendViaCycleTLS(req: PreparedRequest, opts: RequestOptions): Promise<Response> {
-    const url = new URL(req.url);
-    const proxyUrl = this.selectProxy(url, opts.proxies);
-    const headers: Record<string, string> = {};
-    let userAgent = '';
-    for (const [k, v] of req.headers.items()) {
-      const lower = k.toLowerCase();
-      if (lower === 'host' || lower === 'connection' || lower === 'keep-alive' || lower === 'content-length') continue;
-      if (lower === 'user-agent') userAgent = v;
-      headers[k] = v;
-    }
-    const cookieHeader = this.cookies.headerFor(url);
-    if (cookieHeader && !req.headers.has('Cookie')) headers.Cookie = cookieHeader;
-
-    let readTimeout: number | undefined;
-    if (Array.isArray(opts.timeout)) readTimeout = opts.timeout[1];
-    else if (typeof opts.timeout === 'number') readTimeout = opts.timeout;
-
-    const body = req.body === null || req.body === undefined ? '' : typeof req.body === 'string' ? req.body : req.body.toString('utf8');
-    const config: Record<string, any> = {
-      headers,
-      body,
-      ja3: this.impersonateJa3,
-      userAgent,
-      disableRedirect: true,
-      insecureSkipVerify: this.verify === false,
-      timeout: readTimeout ?? 300,
-    };
-    if (this.impersonateHttp2) config.http2Fingerprint = this.impersonateHttp2;
-    if (proxyUrl) config.proxy = proxyUrl;
-
-    const client = await this.loadCycleTLS();
-    const started = Date.now();
-    let res: { status: number; body: string; headers: Record<string, any>; finalUrl?: string };
-    try {
-      res = await client(req.url, config, req.method.toLowerCase());
-    } catch (e: any) {
-      throw mapNetworkError(e, req);
-    }
-    if (res.status === 408) throw new ReadTimeout(`cycletls timeout: ${res.body || ''}`, { request: req });
-    if (res.status === 0) throw new ConnectionError(`cycletls connection failed: ${res.body || ''}`, { request: req });
-
-    const response = new Response();
-    response.request = req;
-    response.url = res.finalUrl || req.url;
-    response.status_code = res.status;
-    response.reason = STATUS_REASONS[res.status] || '';
-    response.elapsed = (Date.now() - started) / 1000;
-    const setCookies: string[] = [];
-    for (const [k, v] of Object.entries(res.headers || {})) {
-      if (v === undefined || v === null) continue;
-      if (k.toLowerCase() === 'set-cookie') {
-        const list = Array.isArray(v) ? (v as string[]) : splitSetCookie(String(v));
-        setCookies.push(...list);
-        response.headers.set(k, setCookies.join(', '));
-      } else response.headers.set(k, Array.isArray(v) ? v.join(', ') : String(v));
-    }
-    response.setCookies = setCookies;
-    // cycletls already decompresses the body and returns it as text.
-    response.content = Buffer.from(res.body ?? '', 'utf8');
-    response.rawLength = response.content.length;
-    if (setCookies.length) this.cookies.storeFromHeaders(url, setCookies);
-    return response;
-  }
-
   get(url: string, opts: RequestOptions = {}) {
     return this.request('GET', url, opts);
   }
@@ -808,11 +696,6 @@ export class Session {
   delete(url: string, opts: RequestOptions = {}) {
     return this.request('DELETE', url, opts);
   }
-}
-
-/** Split a comma-joined Set-Cookie header, keeping commas that belong inside Expires dates. */
-function splitSetCookie(header: string): string[] {
-  return header.split(/,(?=\s*[^;,\s]+=)/).map((s) => s.trim()).filter(Boolean);
 }
 
 function mapNetworkError(e: any, req: PreparedRequest, connectTimeout?: number): Error {

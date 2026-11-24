@@ -37,11 +37,7 @@ export interface ClientOptions {
   publicGraphqlUserAgent?: string | null;
   publicAcceptLanguage?: string;
   withChallengeFlow?: boolean;
-  privateTransport?: 'http1' | 'http2' | 'mobile' | 'impersonate';
-  /** custom JA3 for the 'impersonate' transport (needs the optional 'cycletls' package) */
-  privateImpersonateJa3?: string;
-  /** optional HTTP/2 settings fingerprint for the 'impersonate' transport */
-  privateImpersonateHttp2?: string;
+  privateTransport?: 'http1' | 'http2' | 'mobile';
   email?: string | null;
   phoneNumber?: string | null;
 }
@@ -112,7 +108,7 @@ export class ClientBase {
   challengeCodeHandler!: ChallengeCodeHandler;
   changePasswordHandler!: ChangePasswordHandler;
   privateRequestLogger: Logger = getLogger('private_request');
-  privateTransport: 'http1' | 'http2' | 'mobile' | 'impersonate' = 'http2';
+  privateTransport: 'http1' | 'http2' | 'mobile' = 'http2';
   _privateAdapterTransport: string | null = null;
   domain = config.API_DOMAIN;
   lastResponse: Response | null = null;
@@ -228,8 +224,6 @@ export class ClientBase {
     this.private = new Session();
     this.private.verify = this.tlsVerify;
     this.private.mobileTls = true;
-    if (options.privateImpersonateJa3) this.private.impersonateJa3 = options.privateImpersonateJa3;
-    if (options.privateImpersonateHttp2) this.private.impersonateHttp2 = options.privateImpersonateHttp2;
     this.privateTransport = self._normalizePrivateTransport(options.privateTransport ?? this.privateTransport);
     this.email = options.email ?? null;
     this.phoneNumber = options.phoneNumber ?? null;
