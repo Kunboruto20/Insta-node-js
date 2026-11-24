@@ -223,6 +223,7 @@ export class ClientBase {
     this._pigeonSessionId = self.generateUuid('UFS-', '-1');
     this.private = new Session();
     this.private.verify = this.tlsVerify;
+    this.private.mobileTls = true;
     this.privateTransport = self._normalizePrivateTransport(options.privateTransport ?? this.privateTransport);
     this.email = options.email ?? null;
     this.phoneNumber = options.phoneNumber ?? null;

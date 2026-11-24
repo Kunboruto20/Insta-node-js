@@ -415,6 +415,8 @@ export class Session {
   proxies: Proxies = {};
   verify: boolean | string = true;
   transport: Transport = 'http1';
+  /** When true, always present a mobile-app-like TLS 1.3-only ClientHello, even on the http1 transport. */
+  mobileTls = false;
   retry: RetryConfig = { total: 3, statusForcelist: [429, 500, 502, 503, 504], backoffFactor: 2, allowedMethods: ['GET', 'POST'] };
   maxRedirects = 30;
   /** browser profile name used by the public "http2" transport */
@@ -448,11 +450,12 @@ export class Session {
         /* ignore unreadable CA path */
       }
     }
-    if (this.transport === 'http2' || this.transport === 'mobile') {
-      // Mobile-like ClientHello: TLS 1.3 only with modern groups.
+    if (this.mobileTls || this.transport === 'http2' || this.transport === 'mobile') {
+      // Mobile-like ClientHello: TLS 1.3 only with modern groups, matching the official app's handshake.
       opts.minVersion = 'TLSv1.3';
+      opts.maxVersion = 'TLSv1.3';
       opts.ecdhCurve = this.transport === 'mobile' ? 'X25519' : 'X25519MLKEM768:X25519:P-256:P-384';
-      opts.ALPNProtocols = ['h2'];
+      opts.ALPNProtocols = this.transport === 'http1' ? ['http/1.1'] : ['h2'];
     }
     return opts;
   }
