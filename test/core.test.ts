@@ -70,6 +70,20 @@ test('DirectThread.isSeen', () => {
   assert.ok(!('isSeen' in JSON.parse(JSON.stringify(t))));
 });
 
+test('impersonate transport wires onto the private session', () => {
+  const cl = new ig.Client({ privateTransport: 'impersonate', privateImpersonateJa3: '771,4865,0' });
+  assert.equal(cl.privateTransport, 'impersonate');
+  assert.equal(cl.private.transport, 'impersonate');
+  assert.equal(cl.private.impersonateJa3, '771,4865,0');
+  assert.equal(cl.public.transport, 'http1');
+  assert.throws(() => new ig.Client({ privateTransport: 'bogus' as any }), /privateTransport must be/);
+});
+
+test('impersonate transport fails clearly when cycletls is absent', async () => {
+  const cl = new ig.Client({ privateTransport: 'impersonate' });
+  await assert.rejects(cl.private.get('https://i.instagram.com/'), /cycletls/);
+});
+
 test('media downloads send the Instagram app User-Agent', async () => {
   const http = await import('node:http');
   let seen: string | undefined;
