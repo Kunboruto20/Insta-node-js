@@ -1,6 +1,6 @@
 {
   "name": "insta-node-js",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "description": "Fast and effective Instagram Private API wrapper for Node.js, written in TypeScript, with realtime MQTT support",
   "author": "Kunboruto20",
   "license": "MIT",
