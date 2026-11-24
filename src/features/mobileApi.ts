@@ -556,6 +556,7 @@ export class PrivateRequestFeature {
     if (!this._downloadSession || this._downloadSessionKey !== key) {
       const session = new Session();
       session.verify = this.tlsVerify;
+      session.mobileTls = true;
       session.proxies = { ...this.private.proxies };
       this._downloadSession = session;
       this._downloadSessionKey = key;
