@@ -227,7 +227,7 @@ const cl = new Client({
   timezoneName: 'Europe/Bucharest',
   pushDisabled: false,
   tlsVerify: true,                         // or a path to a CA bundle
-  privateTransport: 'http2',               // 'http1' | 'http2' | 'mobile'
+  privateTransport: 'http2',               // 'http1' | 'http2' | 'mobile' | 'impersonate'
   publicTransport: 'http1',                // 'http1' | 'http2'
   sessionRetryTotal: 3,
   sessionRetryBackoffFactor: 2,
@@ -236,6 +236,28 @@ const cl = new Client({
 ```
 
 All options are optional. `settings` accepts an object previously returned by `getSettings()`; `logger` accepts a custom logger (see [Logging](#logging)).
+
+### TLS fingerprint (`impersonate` transport)
+
+The default transports perform the TLS handshake with Node's own TLS stack. Instagram's edge sometimes answers a fresh username/password login with `HTTP 429` even when the IP is clean, because the handshake does not match the one its mobile app produces.
+
+The `impersonate` transport routes the private API through a TLS stack that can present an arbitrary `JA3` fingerprint, so the handshake can be made to match a real mobile client. It needs the optional [`cycletls`](https://www.npmjs.com/package/cycletls) package (a native helper):
+
+```bash
+npm install cycletls
+```
+
+```ts
+const cl = new Client({
+  privateTransport: 'impersonate',
+  // optional: supply a captured ClientHello for an exact match
+  privateImpersonateJa3: '771,4865-4866-4867-...,0',
+  privateImpersonateHttp2: '1:65536;4:131072;...',
+});
+await cl.login('USERNAME', 'PASSWORD');
+```
+
+`privateImpersonateJa3` defaults to a modern Chrome-on-Android `ClientHello`. For the closest match, capture the `JA3` of the official app (e.g. with a TLS-inspecting proxy) and pass it explicitly. `cycletls` ships a native binary and may not be available on every platform (e.g. Termux/Android); it is optional and only required when this transport is used.
 
 ## Authentication
 
