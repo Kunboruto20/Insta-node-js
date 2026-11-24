@@ -13,6 +13,7 @@ test('client exposes the full API surface', () => {
     'photoUpload', 'videoUpload', 'albumUpload', 'clipUpload', 'igtvUpload', 'photoUploadToStory',
     'directThreads', 'directSend', 'directMessages', 'storyInfo', 'highlightInfo', 'hashtagInfo', 'locationInfo',
     'challengeResolve', 'totpGenerateSeed', 'createNote', 'searchUsers', 'realtimeConnect', 'fbnsConnect',
+    'attestationCreateAndroidKeystore', 'attestationCreateAndroidPlayIntegrity',
   ]) {
     assert.equal(typeof (cl as any)[name], 'function', name);
   }

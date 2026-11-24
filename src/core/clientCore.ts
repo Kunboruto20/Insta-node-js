@@ -159,6 +159,7 @@ export class ClientBase {
   usdidRegistered = false;
   attestationChallengeNonce = '';
   attestationKeyNonce = '';
+  attestationPlayIntegrityNonce = '';
   _usdidHeaderCache = '';
   _usdidHeaderExpiresAt = 0;
 

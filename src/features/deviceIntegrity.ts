@@ -139,6 +139,26 @@ export class DeviceAttestationFeature {
     return result;
   }
 
+  /**
+   * Request the Play Integrity attestation nonce. The official app performs this
+   * handshake alongside the keystore one; it only submits the app-scoped device id
+   * and receives a challenge nonce (no Google-signed token travels on this call).
+   */
+  async attestationCreateAndroidPlayIntegrity(this: Client, domain: string | null = null): Promise<any> {
+    const result = await this.privateRequest(
+      'attestation/create_android_playintegrity/',
+      { app_scoped_device_id: this.uuid },
+      {
+        withSignature: false,
+        headers: { 'X-FB-Friendly-Name': 'IgApi: attestation/create_android_playintegrity/' },
+        login: true,
+        ...(domain ? { domain } : {}),
+      },
+    );
+    this.attestationPlayIntegrityNonce = String(result.challenge_nonce || '');
+    return result;
+  }
+
   /** Build the accepted keystore-unavailable X-IG-Attest-Params state. */
   attestationParams(this: Client, challengeNonce = ''): string {
     const nonce = challengeNonce || this.attestationChallengeNonce;
