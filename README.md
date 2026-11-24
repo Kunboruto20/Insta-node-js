@@ -28,6 +28,7 @@ A standalone Node.js library for the Instagram mobile API, written in **TypeScri
 - [Installation](#installation)
 - [Dependencies](#dependencies)
 - [Quick start](#quick-start)
+- [Example: a Direct auto-reply bot](#example-a-direct-auto-reply-bot)
 - [Conventions](#conventions)
 - [Client options](#client-options)
 - [Authentication](#authentication)
@@ -41,6 +42,7 @@ A standalone Node.js library for the Instagram mobile API, written in **TypeScri
 - [Proxy](#proxy)
 - [Device, locale and timezone](#device-locale-and-timezone)
 - [Account](#account)
+- [Multiple accounts](#multiple-accounts)
 - [Users](#users)
 - [Media](#media)
 - [Comments](#comments)
@@ -56,12 +58,14 @@ A standalone Node.js library for the Instagram mobile API, written in **TypeScri
 - [Notes](#notes)
 - [Insights](#insights)
 - [Explore, Reels and music](#explore-reels-and-music)
+- [Timeline and feeds](#timeline-and-feeds)
 - [Pagination](#pagination)
 - [Realtime MQTT](#realtime-mqtt)
 - [FBNS push notifications](#fbns-push-notifications)
 - [Error handling (Boom)](#error-handling-boom)
 - [Logging](#logging)
 - [Models](#models)
+- [Recipes](#recipes)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 
@@ -134,6 +138,69 @@ CommonJS:
 
 ```js
 const { Client } = require('insta-node-js');
+```
+
+## Example: a Direct auto-reply bot
+
+A complete, runnable bot: it restores a saved session (or logs in once), connects to realtime MQTT, listens to incoming Direct messages and replies with text. This is the typical shape of a bot built with this library.
+
+```ts
+import { existsSync } from 'fs';
+import { Client, Boom, LoginRequired } from 'insta-node-js';
+
+const SESSION_FILE = 'session.json';
+const REPLY = 'Hi! Thanks for your message, I will get back to you soon.';
+
+async function getClient(): Promise<Client> {
+  const cl = new Client();
+  if (existsSync(SESSION_FILE)) await cl.loadSettings(SESSION_FILE);
+  await cl.login('USERNAME', 'PASSWORD'); // reuses the session when it is still valid
+  await cl.dumpSettings(SESSION_FILE);
+  return cl;
+}
+
+async function main() {
+  const cl = await getClient();
+  const me = await cl.accountInfo();
+  const myId = String(me.pk);
+  console.log(`Logged in as @${me.username}`);
+
+  const lastReply = new Map<string, number>();
+
+  cl.realtimeOn('message', async (ev) => {
+    const m = ev.message || {};
+    if (!m.thread_id || String(m.user_id) === myId) return; // ignore our own messages
+    const now = Date.now();
+    if ((lastReply.get(m.thread_id) || 0) + 4000 > now) return; // rate-limit per thread
+    lastReply.set(m.thread_id, now);
+    await rt.directSendText(m.thread_id, REPLY);
+    console.log(`Replied in thread ${m.thread_id}`);
+  });
+
+  const rt = await cl.realtimeConnect();
+  await rt.directSubscribe();
+  console.log('Listening for Direct messages...');
+
+  setInterval(() => cl.realtimePing().catch(() => {}), 60_000); // keepalive
+
+  for (;;) {
+    try {
+      await cl.realtimeReadOnce();
+    } catch (err: any) {
+      if (err.name === 'TimeoutError') continue;         // no activity
+      if (Boom.isBoom(err) && err.output.statusCode >= 500) { // connection lost
+        await cl.realtimeDisconnect().catch(() => {});
+        await cl.realtimeConnect();
+        await rt.directSubscribe();
+        continue;
+      }
+      if (err instanceof LoginRequired) break;           // session expired
+      throw err;
+    }
+  }
+}
+
+main().catch(console.error);
 ```
 
 ## Conventions
@@ -346,6 +413,33 @@ await cl.accountSetPublic();
 await cl.changePassword('OLD_PASSWORD', 'NEW_PASSWORD');
 ```
 
+Notification preferences (business/creator accounts and normal accounts):
+
+```ts
+await cl.notificationLikes('off');            // mute like notifications
+await cl.notificationComments('from_following');
+await cl.notificationLikes('on');             // turn back on
+```
+
+Two-factor authentication (TOTP) on your own account:
+
+```ts
+const seed = await cl.totpGenerateSeed();              // add this seed to your authenticator app
+const backupCodes = await cl.totpEnable(cl.totpGenerateCode(seed));
+console.log('backup codes:', backupCodes);
+await cl.totpDisable();
+
+const security = await cl.accountSecurityInfo();        // 2FA status, trusted devices, backup codes info
+```
+
+## Multiple accounts
+
+```ts
+// accounts linked in your Accounts Center, and featured/suggested accounts
+const family = await cl.getAccountFamilyV1();
+const featured = await cl.featuredAccountsV1();
+```
+
 ## Users
 
 ```ts
@@ -373,6 +467,37 @@ const reels = await cl.userClips(userId, 20);
 const results = await cl.searchUsers('nasa');
 ```
 
+More user actions:
+
+```ts
+// mute someone's posts or stories without unfollowing
+await cl.mutePostsFromFollow(userId);
+await cl.muteStoriesFromFollow(userId);
+await cl.mutePostsFromFollow(userId, true);   // unmute (revert)
+
+// close friends list
+await cl.closeFriendAdd(userId);
+await cl.closeFriendRemove(userId);
+
+// report a user
+await cl.userReport(userId);                   // reason defaults to 'spam'
+
+// follow requests on a private account
+const requests = await cl.userFollowRequests();
+await cl.userFollowRequestApprove(userId);
+await cl.userFollowRequestDecline(userId);
+```
+
+Friendship status (do I follow them, do they follow me, blocked, muted...):
+
+```ts
+const relationship = await cl.userFriendshipV1(userId);
+console.log(relationship?.following, relationship?.followed_by, relationship?.blocking);
+
+// status for many users at once
+const many = await cl.userFriendshipsV1([userId, friend.pk]);
+```
+
 ## Media
 
 ```ts
@@ -396,6 +521,28 @@ await cl.mediaDelete(media.id);
 await cl.mediaSeen([media.id]);
 ```
 
+Pin, archive and save to a collection:
+
+```ts
+await cl.mediaPin(pk);                 // pin to your profile
+await cl.mediaPin(pk, true);           // unpin
+await cl.mediaArchive(media.id);       // hide from your profile
+await cl.mediaUnarchive(media.id);     // restore
+await cl.mediaSave(media.id);          // save to "All posts"
+await cl.mediaUnsave(media.id);
+
+// edit the caption, title and location
+import { makeLocation } from 'insta-node-js';
+await cl.mediaEdit(media.id, 'Updated caption #node', '', [], makeLocation({ name: 'Bucharest', lat: 44.4268, lng: 26.1025 }));
+```
+
+Media a user is tagged in, and the oEmbed info:
+
+```ts
+const tagged = await cl.usertagMedias(userId, 20);
+const oembed = await cl.mediaOembed('https://www.instagram.com/p/B1LbfVPlwIA/');
+```
+
 ## Comments
 
 ```ts
@@ -409,6 +556,12 @@ await cl.commentLike(comment.pk);
 await cl.commentLike(comment.pk, true); // unlike
 await cl.commentPin(media.id, comment.pk);
 await cl.commentBulkDelete(media.id, [comment.pk]);
+```
+
+```ts
+await cl.commentUnlike(comment.pk);
+await cl.commentPin(media.id, comment.pk);       // pin a comment (as the media owner)
+const likers = await cl.commentLikers(comment.pk);
 ```
 
 ## Uploading
@@ -481,7 +634,11 @@ await cl.storySeen(stories.map((s) => s.pk));
 const info = await cl.storyInfo(stories[0].pk);
 const viewers = await cl.storyViewers(story.pk); // your own story
 await cl.storyLike(stories[0].id);
+await cl.storyUnlike(stories[0].id);
 await cl.storyDelete(story.pk);
+
+// vote in a story poll (pollId from the story stickers, option index 0 or 1)
+// await cl.storyPollVote(stories[0].id, pollId, 0);
 ```
 
 Build a story image/video with a caption and mentions (`StoryBuilder`, needs ffmpeg):
@@ -514,11 +671,32 @@ console.log(highlight.title, highlight.items.length);
 await cl.highlightCreate('My highlight', [story.pk]);
 ```
 
+```ts
+const created = await cl.highlightCreate('Trips', [story.pk], story.pk);
+await cl.highlightDelete(created.pk);
+```
+
+```ts
+await cl.highlightAddStories(created.pk, [story.id]);
+await cl.highlightRemoveStories(created.pk, [story.id]);
+```
+
 ## Collections
 
 ```ts
 const collections = await cl.collections();
 const saved = await cl.collectionMedias(collections[0].id, 20);
+```
+
+```ts
+// find a collection by name and read it; list your liked and saved posts
+const pk = await cl.collectionPkByName('Travel');
+const byName = await cl.collectionMediasByName('Travel', 20);
+const liked = await cl.likedMedias(20);
+
+// save / unsave a post to a specific collection
+await cl.mediaSave(media.id, pk);
+await cl.mediaUnsave(media.id, pk);
 ```
 
 ## Hashtags
@@ -533,6 +711,15 @@ await cl.hashtagFollow('nodejs');
 await cl.hashtagFollow('nodejs', true); // unfollow
 ```
 
+```ts
+import { collect } from 'insta-node-js';
+
+// iterate through many hashtag medias (handles pagination)
+for await (const m of cl.iterHashtagMedias('travel', 60)) {
+  console.log(m.code, m.like_count);
+}
+```
+
 ## Locations
 
 ```ts
@@ -541,6 +728,7 @@ const nearby = await cl.locationSearch(44.4268, 26.1025);
 const location = await cl.locationInfo(places[0].pk!);
 const locationTop = await cl.locationMediasTop(places[0].pk!, 20);
 ```
+const locationRecent = await cl.locationMediasRecent(places[0].pk!, 20);
 
 ## Search
 
@@ -550,6 +738,12 @@ const tags = await cl.searchHashtags('travel');
 const music = await cl.searchMusic('summer');
 const placesFound = await cl.fbsearchPlaces('Paris');
 const directUsers = await cl.directSearch('john');
+```
+
+Search within a user's followers:
+
+```ts
+const found = await cl.searchFollowers(userId, 'maria');
 ```
 
 ## Direct messages
@@ -580,6 +774,51 @@ const pending = await cl.directPendingInbox(20);
 console.log(thread.isSeen(cl.userId!)); // has the other side seen the last message?
 ```
 
+Group threads:
+
+```ts
+// create a group and manage it
+const groupId = await cl.directThreadCreate([friend.pk, otherUserId], 'My group');
+await cl.directThreadAddUsers(groupId, [anotherUserId]);
+await cl.directThreadUpdateTitle(groupId, 'Renamed group');
+
+// mute / unmute a thread
+await cl.directThreadMute(groupId);
+await cl.directThreadUnmute(groupId);
+
+// hide (delete) a thread, optionally moving future messages to spam
+await cl.directThreadHide(groupId);
+await cl.directThreadHide(groupId, true);
+
+// mark a thread as unread
+await cl.directThreadMarkUnread(groupId);
+```
+
+Message requests (the "pending" inbox):
+
+```ts
+const pendingThreads = await cl.directPendingInbox(20);
+for (const th of pendingThreads) {
+  await cl.directRequestApprove(th.id); // accept the request
+}
+```
+
+Reactions and seen:
+
+```ts
+const msgs = await cl.directMessages(thread.id, 20);
+await cl.directSendReaction(thread.id, msgs[0].id, '❤');   // react with an emoji
+await cl.directSendReaction(thread.id, msgs[0].id, '😂');
+await cl.directMessageSeen(thread.id, msgs[0].id);          // mark as seen
+await cl.directMessageDelete(thread.id, msgs[0].id);        // unsend your message
+```
+
+Voice message with a waveform:
+
+```ts
+await cl.directSendVoice('./voice.m4a', [friend.pk]);
+```
+
 ## Notes
 
 ```ts
@@ -588,6 +827,19 @@ import { NoteAudience } from 'insta-node-js';
 const note = await cl.createNote('Hello 👋', NoteAudience.MUTUAL_FOLLOWERS);
 const notes = await cl.getNotes();
 await cl.deleteNote(note.id);
+```
+
+```ts
+import { NoteAudience } from 'insta-node-js';
+
+// a note with a music track
+const [track] = await cl.searchMusic('chill beats');
+await cl.createMusicNote(track, 'now playing', NoteAudience.CLOSE_FRIENDS);
+
+// read a specific user's note from the list
+const all = await cl.getNotes();
+const friendsNote = cl.getNoteByUser(all, 'instagram');
+const noteText = cl.getNoteTextByUser(all, 'instagram');
 ```
 
 ## Insights
@@ -599,12 +851,35 @@ const account = await cl.insightsAccount();
 const mediaInsights = await cl.insightsMedia(pk);
 ```
 
+```ts
+// insights for all your posts, filtered and ordered
+const allInsights = await cl.insightsMediaFeedAll('ALL', 'TWO_YEARS', 'REACH_COUNT');
+```
+
 ## Explore, Reels and music
 
 ```ts
 const explore = await cl.explorePage();
 const reelsFeed = await cl.reels(10);
 const songs = await cl.searchMusic('lofi');
+```
+
+```ts
+// music track details and reels feeds
+const track = await cl.trackInfoById('123456789');
+const exploreReels = await cl.exploreReels(10);
+const friendsReels = await cl.friendsReels(10);
+```
+
+## Timeline and feeds
+
+```ts
+// your home timeline (the main feed)
+const timeline = await cl.getTimelineFeed();
+console.log(timeline.feed_items?.length);
+
+// the stories tray (who posted stories)
+const tray = await cl.getReelsTrayFeed();
 ```
 
 ## Pagination
@@ -717,6 +992,26 @@ Realtime events:
 | `realtime_sub` | GraphQL / Skywalker payloads |
 
 Handlers can be `async`; they run in order and are awaited.
+
+Send Direct actions over MQTT (faster than the HTTP methods, but text / reactions only):
+
+```ts
+const rt = await cl.realtimeConnect();
+await rt.directSubscribe();
+
+await rt.directSendText(threadId, 'Sent over MQTT');
+await rt.directSendReaction(threadId, itemId, '❤');
+await rt.directIndicateActivity(threadId, true);        // show the typing indicator
+await rt.directMarkSeen(threadId, itemId);
+await rt.sendForegroundState({ inForegroundApp: true, inForegroundDevice: true, keepAliveTimeout: 60 });
+```
+
+Presence (who is online / active):
+
+```ts
+const presence = await cl.directUsersPresence([friend.pk]);
+const active = await cl.directActivePresence();
+```
 
 A custom transport (for tests or tunnelling) can be passed to `realtimeConnect(transport)`; it must implement `connect()`, `send(packet)`, `recvPacket()` and `disconnect()`.
 
@@ -860,6 +1155,71 @@ const loc = makeLocation({ name: 'Eiffel Tower', lat: 48.8584, lng: 2.2945 });
 ```
 
 Validation failures throw `ModelValidationError` (Boom 422, details in `err.data.errors`).
+
+## Recipes
+
+Retry on rate limits with exponential back-off:
+
+```ts
+import { Boom } from 'insta-node-js';
+
+async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (i + 1 < attempts && Boom.isBoom(err, 429)) {
+        await new Promise((r) => setTimeout(r, 60_000 * (i + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+const user = await withRetry(() => cl.userInfoByUsername('instagram'));
+```
+
+Collect every page of a paginated endpoint into one array:
+
+```ts
+import { collect } from 'insta-node-js';
+
+const allMedias = await collect(cl.iterUserMedias(userId, 0)); // 0 = no limit, fetch all
+```
+
+Keep a long-running session healthy (re-login only when needed):
+
+```ts
+import { LoginRequired } from 'insta-node-js';
+
+async function ensureLoggedIn(cl: Client) {
+  try {
+    await cl.getTimelineFeed();
+  } catch (err) {
+    if (err instanceof LoginRequired) {
+      await cl.relogin();
+      await cl.dumpSettings('session.json');
+    } else {
+      throw err;
+    }
+  }
+}
+```
+
+Rotate the proxy when you hit a block:
+
+```ts
+const proxies = ['socks5://u:p@host1:1080', 'socks5://u:p@host2:1080'];
+let i = 0;
+cl.handleException = async (client, err) => {
+  if (Boom.isBoom(err, 429) || Boom.isBoom(err, 403)) {
+    client.setProxy(proxies[++i % proxies.length]);
+    return; // the failed request is retried on the new proxy
+  }
+  throw err;
+};
+```
 
 ## Disclaimer
 

@@ -36,6 +36,7 @@ export * as shortcode from './helpers/shortcode';
 export * as encoding from './helpers/encoding';
 export * as bigJson from './helpers/bigJson';
 export * as pagination from './helpers/pagination';
+export { collect, iterPaginated } from './helpers/pagination';
 export * as logger from './helpers/logger';
 export * as delays from './helpers/delays';
 export * as assertions from './helpers/assertions';
